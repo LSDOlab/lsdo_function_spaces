@@ -1,4 +1,4 @@
-# Welcome to lsdo_project_template
+# Welcome to lsdo_function_spaces
 
 ![alt text](/src/images/lsdolab.png "Title displayed")
 

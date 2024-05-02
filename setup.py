@@ -20,14 +20,14 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(
-    name='lsdo_project_template',
-    version=get_version('lsdo_project_template/__init__.py'),
-    author='Author name',
-    author_email='author@gmail.com',
+    name='lsdo_function_spaces',
+    version=get_version('lsdo_function_spaces/__init__.py'),
+    author='Andrew Fletcher',
+    author_email='afletcher168@gmail.com',
     license='LGPLv3+',
-    keywords='python project template repository package',
-    url='http://github.com/LSDOlab/lsdo_project_template',
-    download_url='http://pypi.python.org/pypi/lsdo_project_template',
+    keywords='python auto-differentation functions optimization B-splines, splines',
+    url='http://github.com/LSDOlab/lsdo_function_spaces',
+    download_url='http://pypi.python.org/pypi/lsdo_function_spaces',
     description='A template repository/package for LSDOlab projects',
     long_description=long_description,
     long_description_content_type='text/markdown',

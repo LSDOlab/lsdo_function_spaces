@@ -12,13 +12,13 @@
 
 # import os
 # import sys
-# sys.path.insert(0, os.path.abspath('../lsdo_project_template/core'))     # for autodoc
+# sys.path.insert(0, os.path.abspath('../lsdo_function_spaces/core'))     # for autodoc
 
 # -- Project information -----------------------------------------------------
 
-project = 'lsdo_project_template'
-copyright = '2023, Anugrah'
-author = 'Anugrah'
+project = 'lsdo_function_spaces'
+copyright = '2024, Andrew Fletcher'
+author = 'Andrew Fletcher'
 version = '0.1'
 # release = 0.1.0rtc
 
@@ -54,7 +54,7 @@ myst_enable_extensions = ["dollarmath", "amsmath", "tasklist"]
 nb_execution_mode = 'off'
 
 # autoapi options
-autoapi_dirs = ["../lsdo_project_template/core"]
+autoapi_dirs = ["../lsdo_function_spaces/core"]
 autoapi_root = 'src/autoapi'
 autoapi_type = 'python'
 autoapi_file_patterns = ['*.py', '*.pyi']
