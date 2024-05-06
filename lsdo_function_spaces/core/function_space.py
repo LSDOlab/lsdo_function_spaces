@@ -26,7 +26,8 @@ class FunctionSpace:
         '''
         pass
 
-    def evaluate(self, coefficients:csdl.Variable, parametric_coordinates:np.ndarray, parametric_derivative_order:tuple=None) -> csdl.Variable:
+    def evaluate(self, coefficients:csdl.Variable, parametric_coordinates:np.ndarray, parametric_derivative_order:tuple=None,
+                 plot:bool=False) -> csdl.Variable:
         '''
         Picks a function from the function space with the given coefficients and evaluates or its derivative(s) it at the parametric coordinates.
 
@@ -38,27 +39,35 @@ class FunctionSpace:
             The coordinates at which to evaluate the function.
         parametric_derivative_order : tuple = None -- shape=(num_points, num_parametric_dimensions)
             The order of the parametric derivatives to evaluate.
+        plot : bool = False
+            Whether or not to plot the function with the points from the result of the evaluation.
 
         Returns
         -------
         csdl.Variable
             The function evaluated at the given coordinates.
         '''
-        evaluation_matrix = self.compute_evaluation_matrix(parametric_coordinates, parametric_derivative_order)
-        if isinstance(coefficients, csdl.Variable) and sps.issparse(evaluation_matrix):
-            values = csdl.sparse.matvec(evaluation_matrix, coefficients)
+        basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_order)
+        if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
+            coefficients_reshaped = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
+            # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
+            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients_reshaped.shape[1])))
+            for i in range(coefficients_reshaped.shape[1]):
+                coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
+                values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
+            # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
         elif isinstance(coefficients, csdl.Variable):
-            values = csdl.matvec(evaluation_matrix, coefficients)
+            values = csdl.matvec(basis_matrix, coefficients)
         else:
-            values = evaluation_matrix.dot(coefficients)
+            values = basis_matrix.dot(coefficients.reshape((basis_matrix.shape[1], -1)))
 
         return values
         # raise NotImplementedError(f"Evaluate method must be implemented in {type(self)} class.")
     
 
-    def compute_evaluation_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None) -> sps.csc_matrix:
+    def compute_basis_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None) -> sps.csc_matrix:
         '''
-        Evaluates the basis functions in parametric space and assembles the evaluation matrix (B(u) in P=B(u).dot(C)) where 
+        Evaluates the basis functions in parametric space and assembles the basis matrix (B(u) in P=B(u).dot(C)) where 
         B(u) is the evaluation matrix, P are the evaluated points in physical space, and C is the coefficients.
 
         Parameters
@@ -125,10 +134,10 @@ class FunctionSpace:
 
             parametric_coordinates = np.hstack(parametric_coordinates_tuple)
 
-        evaluation_matrix = self.compute_evaluation_matrix(parametric_coordinates, parametric_derivative_orders)
-        fitting_values = evaluation_matrix.dot(coefficients)
+        basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
+        fitting_values = basis_matrix.dot(coefficients)
         
-        coefficients = self.fit(values=fitting_values, evaluation_matrix=evaluation_matrix, regularization_parameter=regularization_parameter)
+        coefficients = self.fit(values=fitting_values, basis_matrix=basis_matrix, regularization_parameter=regularization_parameter)
         
         return coefficients
             
@@ -139,7 +148,7 @@ class FunctionSpace:
 
     
     def fit(self, values:np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
-            evaluation_matrix:sps.csc_matrix|np.ndarray=None, regularization_parameter:float=None) -> csdl.Variable:
+            basis_matrix:sps.csc_matrix|np.ndarray=None, regularization_parameter:float=None) -> csdl.Variable:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
         parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
@@ -153,7 +162,7 @@ class FunctionSpace:
             The values of the data.
         parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
             The derivative orders to fit.
-        evaluation_matrix : sps.csc_matrix|np.ndarray = None -- shape=(num_points, num_coefficients)
+        basis_matrix : sps.csc_matrix|np.ndarray = None -- shape=(num_points, num_coefficients)
             The evaluation matrix to use for fitting.
         regularization_parameter : float = None
             The regularization parameter to use for fitting. If None, no regularization is used.
@@ -163,16 +172,16 @@ class FunctionSpace:
         csdl.Variable
             The coefficients of the fitted function.
         '''
-        if parametric_coordinates is None and evaluation_matrix is None:
+        if parametric_coordinates is None and basis_matrix is None:
             raise ValueError("Either parametric coordinates or an evaluation matrix must be provided.")
-        if parametric_coordinates is not None and evaluation_matrix is not None:
+        if parametric_coordinates is not None and basis_matrix is not None:
             print("Warning: Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
             # raise Warning("Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
 
         if parametric_coordinates is not None:
-            evaluation_matrix = self.compute_evaluation_matrix(parametric_coordinates, parametric_derivative_orders)
+            basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
         
-        fitting_matrix = evaluation_matrix.T.dot(evaluation_matrix)
+        fitting_matrix = basis_matrix.T.dot(basis_matrix)
         if regularization_parameter is not None:
             if sps.issparse(fitting_matrix):
                 fitting_matrix += regularization_parameter * sps.eye(fitting_matrix.shape[0]).tocsc()
@@ -180,10 +189,10 @@ class FunctionSpace:
                 fitting_matrix += regularization_parameter * np.eye(fitting_matrix.shape[0])
         
         if isinstance(values, csdl.Variable) and sps.issparse(fitting_matrix):
-            fitting_rhs = csdl.sparse.matvec(evaluation_matrix.T, values)
+            fitting_rhs = csdl.sparse.matvec(basis_matrix.T, values)
             coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
         else:
-            fitting_rhs = evaluation_matrix.T.dot(values)
+            fitting_rhs = basis_matrix.T.dot(values)
             if sps.issparse(fitting_matrix):
                 coefficients = np.zeros((fitting_matrix.shape[0], fitting_rhs.shape[1]))
                 if len(fitting_rhs.shape) > 1:
@@ -197,8 +206,40 @@ class FunctionSpace:
         return coefficients
         # raise NotImplementedError(f"Fit method must be implemented in {type(self)} class.")
     
-    # hey github co-pilot. I don't want to make a project method in the function space class. I want it in the function class.
+    # NOTE: Do I want a plot function on the space? I would also have to pass in the coefficients to plot the function. What's the point?
+    # Additional NOTE: Type hinting leads to cyclic imports this way. I could just not type hint, but that's not ideal.
+    # def plot(self, point_types:list=['evaluated_points'], plot_types:list=['surface'],
+    #           opacity:float=1., color:Union[str,Function]='#00629B', surface_texture:str="", additional_plotting_elements:list=[], show:bool=True):
+    #     '''
+    #     Plots the B-spline Surface.
 
-    # # NOTE: Do I want this?    
-    # def create
+    #     Parameters
+    #     -----------
+    #     points_type : list
+    #         The type of points to be plotted. {evaluated_points, coefficients}
+    #     plot_types : list
+    #         The type of plot {surface, wireframe, point_cloud}
+    #     opactity : float
+    #         The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
+    #     color : str
+    #         The 6 digit color code to plot the B-spline as.
+    #     surface_texture : str = "" {"metallic", "glossy", ...}, optional
+    #         The surface texture to determine how light bounces off the surface.
+    #         See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+    #     additional_plotting_elemets : list
+    #         Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+    #     show : bool
+    #         A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+    #     '''
+    #     if self.space.num_parametric_dimensions == 1:
+    #         return self.plot_curve(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color,
+    #                                 additional_plotting_elements=additional_plotting_elements, show=show)
+    #     elif self.space.num_parametric_dimensions == 2:
+    #         return self.plot_surface(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, 
+    #                                  surface_texture=surface_texture, additional_plotting_elements=additional_plotting_elements, show=show)
+    #     elif self.space.num_parametric_dimensions == 3:
+    #         return self.plot_volume(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color,
+    #                                 surface_texture=surface_texture, additional_plotting_elements=additional_plotting_elements, show=show)
+        raise NotImplementedError("I still need to implement this :(")
+        raise NotImplementedError(f"Plot method must be implemented in {type(self)} class?")
 
