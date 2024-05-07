@@ -209,15 +209,22 @@ if __name__ == "__main__":
     print('derivative wrt u:', b_spline.evaluate(parametric_coordinates=parametric_coordinates, parametric_derivative_order=(1,0)).value)
     print('second derivative wrt u: ', b_spline.evaluate(parametric_coordinates=parametric_coordinates, parametric_derivative_order=(2,0)).value)
 
-    projecting_points_z = np.zeros((6,))
-    projecting_points = np.stack((parametric_coordinates[:,0], parametric_coordinates[:,1], projecting_points_z), axis=-1)
+    # projecting_points_z = np.zeros((6,))
+    # projecting_points = np.stack((parametric_coordinates[:,0], parametric_coordinates[:,1], projecting_points_z), axis=-1)
 
-    # import time
-    # t1 = time.time()
-    # for i in range(100):
-    projected_points_parametric = b_spline.project(points=projecting_points, plot=True, grid_search_density_parameter=1)
-    # t2 = time.time()
-    # print('average time: ', (t2-t1)/100)
+    num_points = 10000
+    x_coordinates = np.random.rand(num_points)
+    y_coordinates = np.random.rand(num_points)
+    z_coordinates = np.zeros((num_points,))
+    projecting_points = np.stack((x_coordinates, y_coordinates, z_coordinates), axis=-1)
+
+    import time
+    num_trials = 1
+    t1 = time.time()
+    for i in range(num_trials):
+        projected_points_parametric = b_spline.project(points=projecting_points, plot=False, grid_search_density_parameter=1)
+    t2 = time.time()
+    print('average time: ', (t2-t1)/num_trials)
     projected_points = b_spline.evaluate(parametric_coordinates=projected_points_parametric, plot=True).value
 
     import vedo
@@ -234,7 +241,8 @@ if __name__ == "__main__":
     new_b_spline_plot = new_b_spline.plot(show=False, opacity=0.8)
     projected_points_plot = vedo.Points(projected_points, r=10, c='g')
     projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
-    vedo.show(new_b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
+    plotter = vedo.Plotter()
+    plotter.show(new_b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
 
     # num_fitting_points = 25
     # u_vec = np.einsum('i,j->ij', np.linspace(0., 1., num_fitting_points), np.ones(num_fitting_points)).flatten().reshape((-1,1))

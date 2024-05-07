@@ -27,7 +27,9 @@ class Function:
     coefficients: csdl.Variable
 
     def __post_init__(self):
-        pass
+        if isinstance(self.coefficients, np.ndarray):
+            self.coefficients = csdl.Variable(value=self.coefficients)
+
 
     def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_order:tuple=None, coefficients:csdl.Variable=None,
                  plot:bool=False) -> csdl.Variable:
@@ -164,7 +166,8 @@ class Function:
         '''
         num_physical_dimensions = points.shape[-1]
 
-        grid_search_resolution = 100*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
+        grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
+        # grid_search_resolution = 100
 
         # Perform a grid search
         if direction is None:
@@ -199,158 +202,164 @@ class Function:
             grid_search_points = points + np.outer(np.linspace(-1., 1., grid_search_density_parameter), direction)
 
 
-        current_guess = initial_guess.copy()
-        # As a first implementation approach, loop over points to project and perform Newton optimization for each point
-        for i in range(points.shape[0]):
-            for j in range(max_newton_iterations):
-                # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
-                function_value = self.evaluate(current_guess[i]).value
-
-                displacement = (points[i] - function_value).flatten()
-                d_displacement_d_parametric = np.zeros((num_physical_dimensions, self.space.num_parametric_dimensions,))
-                d2_displacement_d_parametric2 = np.zeros((num_physical_dimensions, self.space.num_parametric_dimensions, self.space.num_parametric_dimensions))
-                for k in range(self.space.num_parametric_dimensions):
-                    parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,), dtype=int)
-                    parametric_derivative_orders[k] = 1
-                    d_displacement_d_parametric[:,k] = -self.space.compute_basis_matrix(
-                        current_guess[i], parametric_derivative_orders=parametric_derivative_orders
-                        ).dot(self.coefficients.value.reshape((-1,num_physical_dimensions)))
-                    for m in range(self.space.num_parametric_dimensions):
-                        parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,))
-                        if m == k:
-                            parametric_derivative_orders[m] = 2
-                        else:
-                            parametric_derivative_orders[k] = 1
-                            parametric_derivative_orders[m] = 1
-                        d2_displacement_d_parametric2[:,k,m] = -self.space.compute_basis_matrix(
-                            current_guess[i], parametric_derivative_orders=parametric_derivative_orders
-                            ).dot(self.coefficients.value.reshape((-1,num_physical_dimensions)))
-
-                # Construct the gradient and hessian
-                gradient = 2*displacement.dot(d_displacement_d_parametric)
-                hessian = 2*(np.tensordot(d_displacement_d_parametric, d_displacement_d_parametric, axes=[0,0])
-                             + np.tensordot(displacement, d2_displacement_d_parametric2, axes=[0,0]))
-                
-                # Remove dof that are on constrant boundary and want to leave (active subspace method)
-                coorinates_to_remove_on_lower_boundary = np.logical_and(current_guess[i] == 0, gradient > 0)
-                coorinates_to_remove_on_upper_boundary = np.logical_and(current_guess[i] == 1, gradient < 0)
-                coorinates_to_remove = np.logical_or(coorinates_to_remove_on_lower_boundary, coorinates_to_remove_on_upper_boundary)
-                coordinates_to_keep = np.arange(self.space.num_parametric_dimensions)[np.logical_not(coorinates_to_remove)]
-
-                # coordinates_to_keep = np.setdiff1d(np.arange(self.space.num_parametric_dimensions), coorinates_to_remove)
-                reduced_gradient = gradient[coordinates_to_keep]
-                reduced_hessian = hessian[np.ix_(coordinates_to_keep, coordinates_to_keep)]
-                
-                # # Finite difference check gradient
-                # finite_difference_gradient = np.zeros((self.space.num_parametric_dimensions,))
-                # for k in range(self.space.num_parametric_dimensions):
-                #     delta = 1e-6
-                #     current_guess_plus_delta = current_guess[i].copy()
-                #     current_guess_plus_delta[k] += delta
-                #     function_value_plus_delta = self.evaluate(current_guess_plus_delta).value
-                #     displacement_plus_delta = (points[i] - function_value_plus_delta).flatten()
-                #     objective = displacement_plus_delta.dot(displacement_plus_delta)
-                #     finite_difference_gradient[k] = (objective - displacement.dot(displacement))/delta
-
-                # Check for convergence
-                if np.linalg.norm(reduced_gradient) < newton_tolerance:
-                    break
-
-                # Solve the linear system
-                # delta = np.linalg.solve(hessian, -gradient)
-                delta = np.linalg.solve(reduced_hessian, -reduced_gradient)
-
-                # Update the initial guess
-                current_guess[i,coordinates_to_keep] += delta
-                # If any of the coordinates are outside the bounds, set them to the bounds
-                current_guess[i] = np.clip(current_guess[i], 0., 1.)
-
-        # # Experimental implementation that does all the Newton optimizations at once to vectorize many of the computations
         # current_guess = initial_guess.copy()
-        # points_left_to_converge = np.arange(points.shape[0])
-        # for j in range(max_newton_iterations):
-        #     # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
-        #     function_values = self.evaluate(current_guess[points_left_to_converge]).value
-        #     displacements = (points[points_left_to_converge] - function_values).reshape(points_left_to_converge.shape[0], num_physical_dimensions)
-            
-        #     d_displacement_d_parametric = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, self.space.num_parametric_dimensions))
-        #     d2_displacement_d_parametric2 = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, 
-        #                                               self.space.num_parametric_dimensions, self.space.num_parametric_dimensions))
+        # # As a first implementation approach, loop over points to project and perform Newton optimization for each point
+        # for i in range(points.shape[0]):
+        #     for j in range(max_newton_iterations):
+        #         # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
+        #         function_value = self.evaluate(current_guess[i]).value
 
-        #     for k in range(self.space.num_parametric_dimensions):
-        #         parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,), dtype=int)
-        #         parametric_derivative_orders[k] = 1
-        #         # d_displacement_d_parametric[:, :, k] = -np.tensordot(
-        #         #     self.space.compute_basis_matrix(current_guess, parametric_derivative_orders=parametric_derivative_orders),
-        #         #     self.coefficients.value.reshape(-1, num_physical_dimensions), axes=[1,0])
-        #         d_displacement_d_parametric[:, :, k] = -self.space.compute_basis_matrix(current_guess[points_left_to_converge], 
-        #                                                                                 parametric_derivative_orders=parametric_derivative_orders).dot(
-        #                                                             self.coefficients.value.reshape(-1, num_physical_dimensions))
-        #             # NOTE on indices: i=points, j=coefficients, k=physical dimensions
+        #         displacement = (points[i] - function_value).flatten()
+        #         d_displacement_d_parametric = np.zeros((num_physical_dimensions, self.space.num_parametric_dimensions,))
+        #         d2_displacement_d_parametric2 = np.zeros((num_physical_dimensions, self.space.num_parametric_dimensions, self.space.num_parametric_dimensions))
+        #         for k in range(self.space.num_parametric_dimensions):
+        #             parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,), dtype=int)
+        #             parametric_derivative_orders[k] = 1
+        #             d_displacement_d_parametric[:,k] = -self.space.compute_basis_matrix(
+        #                 current_guess[i], parametric_derivative_orders=parametric_derivative_orders
+        #                 ).dot(self.coefficients.value.reshape((-1,num_physical_dimensions)))
+        #             for m in range(self.space.num_parametric_dimensions):
+        #                 parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,))
+        #                 if m == k:
+        #                     parametric_derivative_orders[m] = 2
+        #                 else:
+        #                     parametric_derivative_orders[k] = 1
+        #                     parametric_derivative_orders[m] = 1
+        #                 d2_displacement_d_parametric2[:,k,m] = -self.space.compute_basis_matrix(
+        #                     current_guess[i], parametric_derivative_orders=parametric_derivative_orders
+        #                     ).dot(self.coefficients.value.reshape((-1,num_physical_dimensions)))
 
-        #         for m in range(self.space.num_parametric_dimensions):
-        #             parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,))
-        #             if m == k:
-        #                 parametric_derivative_orders[m] = 2
-        #             else:
-        #                 parametric_derivative_orders[k] = 1
-        #                 parametric_derivative_orders[m] = 1
-        #             # d2_displacement_d_parametric2[:, :, k, m] = -np.einsum(
-        #             #     self.space.compute_basis_matrix(current_guess, parametric_derivative_orders=parametric_derivative_orders),
-        #             #     self.coefficients.value.reshape((-1, num_physical_dimensions)), 'ij,jk->ik')
-        #             d2_displacement_d_parametric2[:, :, k, m] = -self.space.compute_basis_matrix(current_guess[points_left_to_converge], 
-        #                                                                     parametric_derivative_orders=parametric_derivative_orders).dot(
-        #                                                                 self.coefficients.value.reshape((-1, num_physical_dimensions)))
-        #                 # NOTE on indices: i=points, j=coefficients, k=physical dimensions
+        #         # Construct the gradient and hessian
+        #         gradient = 2*displacement.dot(d_displacement_d_parametric)
+        #         hessian = 2*(np.tensordot(d_displacement_d_parametric, d_displacement_d_parametric, axes=[0,0])
+        #                      + np.tensordot(displacement, d2_displacement_d_parametric2, axes=[0,0]))
+                
+        #         # Remove dof that are on constrant boundary and want to leave (active subspace method)
+        #         coorinates_to_remove_on_lower_boundary = np.logical_and(current_guess[i] == 0, gradient > 0)
+        #         coorinates_to_remove_on_upper_boundary = np.logical_and(current_guess[i] == 1, gradient < 0)
+        #         coorinates_to_remove = np.logical_or(coorinates_to_remove_on_lower_boundary, coorinates_to_remove_on_upper_boundary)
+        #         coordinates_to_keep = np.arange(self.space.num_parametric_dimensions)[np.logical_not(coorinates_to_remove)]
 
-        #     # Construct the gradient and hessian
-        #     gradient = 2 * np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
-        #     hessian = 2 * (np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
-        #                 + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
+        #         # coordinates_to_keep = np.setdiff1d(np.arange(self.space.num_parametric_dimensions), coorinates_to_remove)
+        #         reduced_gradient = gradient[coordinates_to_keep]
+        #         reduced_hessian = hessian[np.ix_(coordinates_to_keep, coordinates_to_keep)]
+                
+        #         # # Finite difference check gradient
+        #         # finite_difference_gradient = np.zeros((self.space.num_parametric_dimensions,))
+        #         # for k in range(self.space.num_parametric_dimensions):
+        #         #     delta = 1e-6
+        #         #     current_guess_plus_delta = current_guess[i].copy()
+        #         #     current_guess_plus_delta[k] += delta
+        #         #     function_value_plus_delta = self.evaluate(current_guess_plus_delta).value
+        #         #     displacement_plus_delta = (points[i] - function_value_plus_delta).flatten()
+        #         #     objective = displacement_plus_delta.dot(displacement_plus_delta)
+        #         #     finite_difference_gradient[k] = (objective - displacement.dot(displacement))/delta
 
-        #     # Remove dof that are on constrant boundary and want to leave (active subspace method)
-        #     coorinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
-        #     coorinates_to_remove_on_upper_boundary = np.logical_and(current_guess[points_left_to_converge] == 1, gradient < 0)
-        #     coorinates_to_remove_boolean = np.logical_or(coorinates_to_remove_on_lower_boundary, coorinates_to_remove_on_upper_boundary)
-        #     coordinates_to_keep_boolean = np.logical_not(coorinates_to_remove_boolean)
-        #     indices_to_keep = []
-        #     for i in range(points_left_to_converge.shape[0]):
-        #         indices_to_keep.append(np.arange(self.space.num_parametric_dimensions)[coordinates_to_keep_boolean[i]])
-
-        #     reduced_gradients = []
-        #     reduced_hessians = []
-        #     total_gradient_norm = 0.
-        #     counter = 0
-        #     for i in range(points_left_to_converge.shape[0]):
-        #         reduced_gradient = gradient[i, indices_to_keep[counter]]
-
+        #         # Check for convergence
         #         if np.linalg.norm(reduced_gradient) < newton_tolerance:
-        #             points_left_to_converge = np.delete(points_left_to_converge, counter)
-        #             del indices_to_keep[counter]
-        #             continue
+        #             break
 
-        #         # This is after check so it doesn't throw error
-        #         reduced_hessian = hessian[np.ix_(np.array([i]), indices_to_keep[counter], indices_to_keep[counter])][0]    
-
-        #         reduced_gradients.append(reduced_gradient)
-        #         reduced_hessians.append(reduced_hessian)
-        #         total_gradient_norm += np.linalg.norm(reduced_gradient)
-        #         counter += 1
-
-        #     # Check for convergence
-        #     if np.linalg.norm(total_gradient_norm) < newton_tolerance:
-        #         break
-
-        #     # Solve the linear systems
-        #     for i, index in enumerate(points_left_to_converge):
-        #         delta = np.linalg.solve(reduced_hessians[i], -reduced_gradients[i])
+        #         # Solve the linear system
+        #         # delta = np.linalg.solve(hessian, -gradient)
+        #         delta = np.linalg.solve(reduced_hessian, -reduced_gradient)
 
         #         # Update the initial guess
-        #         current_guess[index, indices_to_keep[i]] += delta
+        #         current_guess[i,coordinates_to_keep] += delta
+        #         # If any of the coordinates are outside the bounds, set them to the bounds
+        #         current_guess[i] = np.clip(current_guess[i], 0., 1.)
 
-        #     # If any of the coordinates are outside the bounds, set them to the bounds
-        #     current_guess[points_left_to_converge[i]] = np.clip(current_guess[points_left_to_converge[i]], 0., 1.)
+        # Experimental implementation that does all the Newton optimizations at once to vectorize many of the computations
+        current_guess = initial_guess.copy()
+        points_left_to_converge = np.arange(points.shape[0])
+        for j in range(max_newton_iterations):
+            # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
+            function_values = self.evaluate(current_guess[points_left_to_converge]).value
+            displacements = (points[points_left_to_converge] - function_values).reshape(points_left_to_converge.shape[0], num_physical_dimensions)
+            
+            d_displacement_d_parametric = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, self.space.num_parametric_dimensions))
+            d2_displacement_d_parametric2 = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, 
+                                                      self.space.num_parametric_dimensions, self.space.num_parametric_dimensions))
 
+            for k in range(self.space.num_parametric_dimensions):
+                parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,), dtype=int)
+                parametric_derivative_orders[k] = 1
+                # d_displacement_d_parametric[:, :, k] = -np.tensordot(
+                #     self.space.compute_basis_matrix(current_guess, parametric_derivative_orders=parametric_derivative_orders),
+                #     self.coefficients.value.reshape(-1, num_physical_dimensions), axes=[1,0])
+                d_displacement_d_parametric[:, :, k] = -self.space.compute_basis_matrix(current_guess[points_left_to_converge], 
+                                                                                        parametric_derivative_orders=parametric_derivative_orders).dot(
+                                                                    self.coefficients.value.reshape(-1, num_physical_dimensions))
+                    # NOTE on indices: i=points, j=coefficients, k=physical dimensions
+
+                for m in range(self.space.num_parametric_dimensions):
+                    parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,))
+                    if m == k:
+                        parametric_derivative_orders[m] = 2
+                    else:
+                        parametric_derivative_orders[k] = 1
+                        parametric_derivative_orders[m] = 1
+                    # d2_displacement_d_parametric2[:, :, k, m] = -np.einsum(
+                    #     self.space.compute_basis_matrix(current_guess, parametric_derivative_orders=parametric_derivative_orders),
+                    #     self.coefficients.value.reshape((-1, num_physical_dimensions)), 'ij,jk->ik')
+                    d2_displacement_d_parametric2[:, :, k, m] = -self.space.compute_basis_matrix(current_guess[points_left_to_converge], 
+                                                                            parametric_derivative_orders=parametric_derivative_orders).dot(
+                                                                        self.coefficients.value.reshape((-1, num_physical_dimensions)))
+                        # NOTE on indices: i=points, j=coefficients, k=physical dimensions
+
+            # Construct the gradient and hessian
+            gradient = 2 * np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
+            hessian = 2 * (np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
+                        + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
+
+            # Remove dof that are on constrant boundary and want to leave (active subspace method)
+            coorinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
+            coorinates_to_remove_on_upper_boundary = np.logical_and(current_guess[points_left_to_converge] == 1, gradient < 0)
+            coorinates_to_remove_boolean = np.logical_or(coorinates_to_remove_on_lower_boundary, coorinates_to_remove_on_upper_boundary)
+            coordinates_to_keep_boolean = np.logical_not(coorinates_to_remove_boolean)
+            indices_to_keep = []
+            for i in range(points_left_to_converge.shape[0]):
+                indices_to_keep.append(np.arange(self.space.num_parametric_dimensions)[coordinates_to_keep_boolean[i]])
+
+            reduced_gradients = []
+            reduced_hessians = []
+            total_gradient_norm = 0.
+            counter = 0
+            for i in range(points_left_to_converge.shape[0]):
+                reduced_gradient = gradient[i, indices_to_keep[counter]]
+
+                if np.linalg.norm(reduced_gradient) < newton_tolerance:
+                    points_left_to_converge = np.delete(points_left_to_converge, counter)
+                    del indices_to_keep[counter]
+                    continue
+
+                # This is after check so it doesn't throw error
+                reduced_hessian = hessian[np.ix_(np.array([i]), indices_to_keep[counter], indices_to_keep[counter])][0]    
+
+                reduced_gradients.append(reduced_gradient)
+                reduced_hessians.append(reduced_hessian)
+                total_gradient_norm += np.linalg.norm(reduced_gradient)
+                counter += 1
+
+            # Check for convergence
+            if np.linalg.norm(total_gradient_norm) < newton_tolerance:
+                break
+
+            # Solve the linear systems
+            for i, index in enumerate(points_left_to_converge):
+                delta = np.linalg.solve(reduced_hessians[i], -reduced_gradients[i])
+
+                # Update the initial guess
+                current_guess[index, indices_to_keep[i]] += delta
+
+            # If any of the coordinates are outside the bounds, set them to the bounds
+            current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
+
+        if plot:
+            function_values = self.evaluate(current_guess).value
+            plotting_elements = []
+            plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
+            plotting_elements.append(lfs.plot_points(function_values, color='#F5F0E6', size=10, show=False))
+            self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
 
         return current_guess
 
@@ -412,7 +421,7 @@ class Function:
                 return self.plot_volume(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
                                         surface_texture=surface_texture, line_width=line_width, additional_plotting_elements=additional_plotting_elements, show=show)
             
-            elif isinstance(self.space.num_parametric_dimensions, dict):
+            elif isinstance(self.space, lfs.FunctionSetSpace):
                 # Then there must be a discrete index so loop over subfunctions and plot them
                 plotting_elements = []
                 for index, subfunction_space_index in self.space.index_to_space.items():

@@ -4,19 +4,14 @@ import lsdo_function_spaces as lfs
 
 from dataclasses import dataclass
 
-from lsdo_b_splines_cython.cython.basis_matrix_curve_py import get_basis_curve_matrix
-from lsdo_b_splines_cython.cython.basis_matrix_surface_py import get_basis_surface_matrix
-from lsdo_b_splines_cython.cython.basis_matrix_volume_py import get_basis_volume_matrix
-from lsdo_b_splines_cython.cython.get_open_uniform_py import get_open_uniform
-
 @dataclass
-class BSplineSetSpace(lfs.FunctionSpace):
+class FunctionSetSpace(lfs.FunctionSpace):
     '''
-    Class for representing the space of BSplineFunctions of a particular degree.
+    Class for representing the space of a particular set of functions.
 
     Attributes
     ----------
-    num_parametric_dimensions : dict[int, int]
+    num_parametric_dimensions : dict[str, int]
         The number of parametric dimensions/variables for each B-spline that is a part of this B-spline set.
     b_spline_spaces : list[lfs.BSplineSpace]
         The function spaces that make up this B-spline set.
@@ -39,28 +34,16 @@ class BSplineSetSpace(lfs.FunctionSpace):
         Computes the basis matrix for the given parametric coordinates and derivative orders.
     '''
     num_parametric_dimensions : dict[int, int]
-    spaces : list[lfs.BSplineSpace]
+    spaces : list[lfs.FunctionSpace]
     index_to_space : dict[int, int]
-    name_to_index : dict[str, int]
-    # knots : np.ndarray = None
-    # knot_indices : dict[int, list[np.ndarray]] = None  # outer list is for parametric dimensions, inner list is for knot indices
+    name_to_index : dict[str, int] = None   # For functions that have names.
     connections : list[int, list[int]] = None
 
+    # @property
+    # def index_to_coefficient_indices(self) -> dict[int, list[int]]:
+    #     return self._index_to_coefficient_indices
+
     def __post_init__(self):
-        # if self.knots is None:
-        #     num_knots = 0
-        #     self.knots = []
-        #     self.knot_indices = {}
-
-        #     for index in self.index_to_space:
-        #         space = self.spaces[index]
-        #         self.knot_indices[index] = []
-        #         for i in range(space.num_parametric_dimensions):
-        #             dimension_num_knots = len(space.knot_indices[i])
-        #             self.knot_indices[index].append(np.arange(num_knots, num_knots + dimension_num_knots))
-        #             self.knots.append(space.knots[i])
-        #             num_knots += dimension_num_knots
-
         self.index_to_coefficient_indices = {}
         num_coefficients = 0
         for index in self.index_to_space:
@@ -69,6 +52,7 @@ class BSplineSetSpace(lfs.FunctionSpace):
             self.index_to_coefficient_indices[index] = list(np.arange(num_coefficients, num_coefficients + sub_function_num_coefficients))
             num_coefficients += sub_function_num_coefficients
         self.coefficients_shape = (num_coefficients, self.spaces[0].coefficients_shape[-1])
+
 
     def compute_basis_matrix(self, parametric_coordinates: list[tuple[int, np.ndarray]], parametric_derivative_orders: np.ndarray = None,
                                    expansion_factor:int=None) -> sps.csc_matrix:
@@ -129,7 +113,7 @@ if __name__ == "__main__":
     name_to_index = {'space_of_cubic_b_spline_surfaces_with_10_cp':0, 'quadratic_b_spline_surfaces_5_cp':1}
     num_parametric_dimensions = {0:2, 1:2}
 
-    b_spline_set_space = BSplineSetSpace(num_parametric_dimensions=num_parametric_dimensions, spaces=b_spline_spaces,
+    b_spline_set_space = lfs.FunctionSetSpace(num_parametric_dimensions=num_parametric_dimensions, spaces=b_spline_spaces,
                                             index_to_space=index_to_space, name_to_index=name_to_index)
 
     coefficients_line = np.linspace(0., 1., num_coefficients1)
