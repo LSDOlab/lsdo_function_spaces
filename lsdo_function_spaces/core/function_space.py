@@ -189,8 +189,15 @@ class FunctionSpace:
                 fitting_matrix += regularization_parameter * np.eye(fitting_matrix.shape[0])
         
         if isinstance(values, csdl.Variable) and sps.issparse(fitting_matrix):
-            fitting_rhs = csdl.sparse.matvec(basis_matrix.T, values)
-            coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
+            if len(values.shape) > 1:
+                coefficients = csdl.Variable(value=np.zeros((fitting_matrix.shape[0], values.shape[1])))
+                for i in range(values.shape[1]):
+                    fitting_rhs = csdl.sparse.matvec(basis_matrix.T, values[:,i].reshape((values.shape[0],1)))
+                    coefficients = coefficients.set(csdl.slice[:,i], csdl.solve_linear(fitting_matrix.toarray(), fitting_rhs).flatten())
+                    # NOTE:  # CASTING FITTING MATRIX TO DENSE BECAUSE CSDL DOESN'T HAVE SPARSE SOLVE YET
+            else:
+                fitting_rhs = csdl.sparse.matvec(basis_matrix.T, values)
+                coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
         else:
             fitting_rhs = basis_matrix.T.dot(values)
             if sps.issparse(fitting_matrix):

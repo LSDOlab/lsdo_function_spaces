@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.sparse as sps
-from lsdo_function_spaces import FunctionSpace
+import lsdo_function_spaces as lfs
 
 from dataclasses import dataclass
 
@@ -10,7 +10,7 @@ from lsdo_b_splines_cython.cython.basis_matrix_volume_py import get_basis_volume
 from lsdo_b_splines_cython.cython.get_open_uniform_py import get_open_uniform
 
 @dataclass
-class BSplineSpace(FunctionSpace):
+class BSplineSetSpace(lfs.FunctionSpace):
     '''
     Class for representing the space of BSplineFunctions of a particular degree.
 
@@ -33,7 +33,7 @@ class BSplineSpace(FunctionSpace):
     compute_basis_matrix(parametric_coordinates: np.ndarray, parametric_derivative_orders: np.ndarray = None) -> sps.csc_matrix:
         Computes the basis matrix for the given parametric coordinates and derivative orders.
     '''
-    
+    b_spline_spaces : list[lfs.BSplineSpace]
     degree : tuple
     coefficients_shape : tuple
     knots : np.ndarray = None
@@ -187,29 +187,20 @@ if __name__ == "__main__":
     projecting_points_z = np.zeros((6,))
     projecting_points = np.stack((parametric_coordinates[:,0], parametric_coordinates[:,1], projecting_points_z), axis=-1)
 
-    # import time
-    # t1 = time.time()
-    # for i in range(100):
-    projected_points_parametric = b_spline.project(points=projecting_points, plot=True, grid_search_density_parameter=1)
-    # t2 = time.time()
-    # print('average time: ', (t2-t1)/100)
+    import time
+    t1 = time.time()
+    for i in range(100):
+        projected_points_parametric = b_spline.project(points=projecting_points, plot=True, grid_search_density_parameter=1)
+    t2 = time.time()
+    print('average time: ', (t2-t1)/100)
     projected_points = b_spline.evaluate(parametric_coordinates=projected_points_parametric).value
 
     import vedo
-    # b_spline_plot = b_spline.plot(show=False, opacity=0.8)
-    # projected_points_plot = vedo.Points(projected_points, r=10, c='g')
-    # projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
-    # vedo.show(b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
-
-    new_b_spline_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,1), coefficients_shape=(4,4,3))
-    new_b_spline = b_spline.refit(new_function_space=new_b_spline_space)
-    # new_b_spline.plot()
-    projected_points_parametric = new_b_spline.project(points=projecting_points, plot=True, grid_search_density_parameter=1)
-    projected_points = new_b_spline.evaluate(parametric_coordinates=projected_points_parametric).value
-    new_b_spline_plot = new_b_spline.plot(show=False, opacity=0.8)
+    b_spline_plot = b_spline.plot(show=False, opacity=0.8)
     projected_points_plot = vedo.Points(projected_points, r=10, c='g')
     projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
-    vedo.show(new_b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
+    vedo.show(b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
+
 
     # num_fitting_points = 25
     # u_vec = np.einsum('i,j->ij', np.linspace(0., 1., num_fitting_points), np.ones(num_fitting_points)).flatten().reshape((-1,1))
