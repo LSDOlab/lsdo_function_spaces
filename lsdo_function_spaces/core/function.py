@@ -5,7 +5,8 @@ import csdl_alpha as csdl
 import numpy as np
 
 
-from lsdo_function_spaces.core.function_space import FunctionSpace
+# from lsdo_function_spaces.core.function_space import FunctionSpace
+import lsdo_function_spaces as lfs
 
 
 
@@ -17,12 +18,12 @@ class Function:
 
     Attributes
     ----------
-    space : FunctionSpace
+    space : lfs.FunctionSpace
         The function space in which the function resides.
     coefficients : csdl.Variable -- shape=coefficients_shape or (num_coefficients,)
         The coefficients of the function.
     '''
-    space: FunctionSpace
+    space: lfs.FunctionSpace
     coefficients: csdl.Variable
 
     def __post_init__(self):
@@ -58,11 +59,15 @@ class Function:
             parametric_coordinates=parametric_coordinates,
             parametric_derivative_order=parametric_derivative_order,
             plot=plot)
+        
+        if plot:
+            function_values_plot = lfs.plot_points(function_values.value, color='#F5F0E6', size=10, show=False)
+            self.plot(opacity=0.8, additional_plotting_elements=[function_values_plot], show=True)
 
         return function_values
     
 
-    def refit(self, new_function_space:FunctionSpace, grid_resolution:tuple=None, 
+    def refit(self, new_function_space:lfs.FunctionSpace, grid_resolution:tuple=None, 
               parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
               regularization_parameter:float=None) -> Function:
         '''
@@ -406,6 +411,21 @@ class Function:
             elif self.space.num_parametric_dimensions == 3:
                 return self.plot_volume(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
                                         surface_texture=surface_texture, line_width=line_width, additional_plotting_elements=additional_plotting_elements, show=show)
+            
+            elif isinstance(self.space.num_parametric_dimensions, dict):
+                # Then there must be a discrete index so loop over subfunctions and plot them
+                plotting_elements = []
+                for index, subfunction_space_index in self.space.index_to_space.items():
+                    subfunction_space = self.space.spaces[subfunction_space_index]
+                    subfunction = Function(space=subfunction_space, coefficients=self.coefficients[self.space.index_to_coefficient_indices[index]])
+                    plotting_elements += subfunction.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+                                                          surface_texture=surface_texture, line_width=line_width, 
+                                                          additional_plotting_elements=additional_plotting_elements, show=False)
+                if show:
+                    lfs.show_plot(plotting_elements=plotting_elements, title='B-Spline Set Plot')
+                return plotting_elements
+
+
 
 
     def plot_curve(self, point_type:str='evaluated_points', opacity:float=1., color:str|Function='#00629B', color_map:str='jet',

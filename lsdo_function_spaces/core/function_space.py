@@ -18,7 +18,7 @@ class FunctionSpace:
     # num_physical_dimensions : int     # I might need this, but not using for now so don't have if not needed
     # coefficients_shape : tuple    # Seems overly restrictive making things like transition elements and other unstructured functions impossible
     #   -- It seems like we really only need the num_parametric_dimensions
-    num_parametric_dimensions : int
+    num_parametric_dimensions : int   # This is really useful for the function methods
 
     def __post_init__(self):
         '''
@@ -94,7 +94,7 @@ class FunctionSpace:
 
         Parameters
         ----------
-        coefficients : csdl.Variable -- shape=coefficients_shape or (num_coefficients,)
+        coefficients : csdl.Variable -- shape=coefficients_shape
             The coefficients of the function to refit.
         grid_resolution : tuple = None -- shape=(num_parametric_dimensions,)
             The grid resolution to use for refitting.
@@ -125,11 +125,11 @@ class FunctionSpace:
         if parametric_coordinates is None:
             # if grid_resolution is not None: # Don't need this line because we already error checked at the beginning.
             mesh_grid_input = []
-            for dimension_index in range(self.num_parametric_dimensions):
+            for dimension_index in range(grid_resolution.shape[0]):  # Grid resolution is a tuple of the number of points in each parametric dimension
                 mesh_grid_input.append(np.linspace(0., 1., grid_resolution[dimension_index]))
 
             parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
-            for dimensions_index in range(self.num_parametric_dimensions):
+            for dimensions_index in range(grid_resolution.shape[0]):
                 parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
 
             parametric_coordinates = np.hstack(parametric_coordinates_tuple)

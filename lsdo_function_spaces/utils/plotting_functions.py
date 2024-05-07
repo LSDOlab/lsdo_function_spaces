@@ -25,7 +25,7 @@ def show_plot(plotting_elements:list, title:str, axes:bool=True, view_up:str="z"
     plotter.show(plotting_elements, title, axes=axes, viewup=view_up, interactive=interactive)
 
 
-def plot_points(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#00629B', color_map:str='jet',
+def plot_points(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#00629B', color_map:str='jet', size=6.,
                 additional_plotting_elements:list=[], show:bool=True):
     '''
     Plots a point cloud.
@@ -40,6 +40,8 @@ def plot_points(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#0062
         The 6 digit color code to plot the points as. A numpy array of colors can be provided to color the points individually according to a cmap.
     color_map : str = 'jet'
         The color map to use if the color is a numpy array.
+    size : float = 6.
+        The size (radius) of the points.
     additional_plotting_elemets : list = []
         Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
     show : bool = True
@@ -54,7 +56,7 @@ def plot_points(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#0062
 
     points = points.reshape((points.size//points.shape[-1],points.shape[-1]))
 
-    plotting_points = vedo.Points(points, r=6).opacity(opacity)
+    plotting_points = vedo.Points(points, r=size).opacity(opacity)
     if isinstance(color, str):
         plotting_points.color(color)
     elif isinstance(color, np.ndarray):

@@ -37,7 +37,32 @@ class BSplineSpace(FunctionSpace):
     degree : tuple
     coefficients_shape : tuple
     knots : np.ndarray = None
-    knot_indices : list[np.ndarray] = None  # outer list is for parametric dimensions, inner list is for knot indices
+    knot_indices : list[np.ndarray] = None
+
+    def __post_init__(self):
+        # super().__post_init__()
+        if self.knots is None:
+            # If knots are None, generate open uniform knot vectors
+            self.knots = np.array([])
+            num_knots = 0
+            self.knot_indices = []
+            for i in range(self.num_parametric_dimensions):
+                dimension_num_knots = self.coefficients_shape[i] + self.degree[i] + 1
+                self.knot_indices.append(np.arange(dimension_num_knots))
+                num_knots += dimension_num_knots
+
+                knots_i = np.zeros((num_knots,))
+                get_open_uniform(order=self.degree[i]+1, num_coefficients=self.coefficients_shape[i], knot_vector=knots_i)
+                self.knot_indices.append(np.arange(len(self.knots), len(self.knots) + num_knots))
+                # self.knots.append(knots_i)
+                self.knots = np.hstack((self.knots, knots_i))
+        elif self.knot_indices is None:
+            self.knot_indices = []
+            knot_index = 0
+            for i in range(self.num_parametric_dimensions):
+                num_knots_i = self.coefficients_shape[i] + self.degree[i] + 1
+                self.knot_indices.append(np.arange(knot_index, knot_index + num_knots_i))
+                knot_index += num_knots_i
 
     def compute_basis_matrix(self, parametric_coordinates: np.ndarray, parametric_derivative_orders: np.ndarray = None,
                                    expansion_factor:int=None) -> sps.csc_matrix:
@@ -107,8 +132,8 @@ class BSplineSpace(FunctionSpace):
                 knots_v = np.zeros(self.coefficients_shape[1]+order_v)
                 get_open_uniform(order_v, self.coefficients_shape[1], knots_v)
             elif len(self.knots.shape) == 1:
-                knots_u = self.knots[:self.coefficients_shape[0]+order_u]
-                knots_v = self.knots[self.coefficients_shape[0]+order_u:]
+                knots_u = self.knots[:self.coefficients_shape[0]+order_u]   # This should probably use knot_indices
+                knots_v = self.knots[self.coefficients_shape[0]+order_u:]   # This should probably use knot_indices
 
             get_basis_surface_matrix(order_u, self.coefficients_shape[0], parametric_derivative_orders[0], u_vec, knots_u, 
                 order_v, self.coefficients_shape[1], parametric_derivative_orders[1], v_vec, knots_v, 
@@ -128,10 +153,10 @@ class BSplineSpace(FunctionSpace):
                 knots_w = np.zeros(self.coefficients_shape[1]+order_w)
                 get_open_uniform(order_w, self.coefficients_shape[1], knots_w)
             elif len(self.knots.shape) == 1:
-                knots_u = self.knots[:self.coefficients_shape[0]+order_u]
+                knots_u = self.knots[:self.coefficients_shape[0]+order_u]   # This should probably use knot_indices
                 knots_v = self.knots[self.coefficients_shape[0]+order_u : 
-                                self.coefficients_shape[0]+order_u + self.coefficients_shape[1]+order_v]
-                knots_w = self.knots[self.coefficients_shape[0]+order_u + self.coefficients_shape[1]+order_v:]
+                                self.coefficients_shape[0]+order_u + self.coefficients_shape[1]+order_v]    # This should probably use knot_indices
+                knots_w = self.knots[self.coefficients_shape[0]+order_u + self.coefficients_shape[1]+order_v:]  # This should probably use knot_indices
 
             get_basis_volume_matrix(order_u, self.coefficients_shape[0], parametric_derivative_orders[0], u_vec, knots_u,
                 order_v, self.coefficients_shape[1], parametric_derivative_orders[1], v_vec, knots_v, 
@@ -193,7 +218,7 @@ if __name__ == "__main__":
     projected_points_parametric = b_spline.project(points=projecting_points, plot=True, grid_search_density_parameter=1)
     # t2 = time.time()
     # print('average time: ', (t2-t1)/100)
-    projected_points = b_spline.evaluate(parametric_coordinates=projected_points_parametric).value
+    projected_points = b_spline.evaluate(parametric_coordinates=projected_points_parametric, plot=True).value
 
     import vedo
     # b_spline_plot = b_spline.plot(show=False, opacity=0.8)
