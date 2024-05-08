@@ -23,13 +23,17 @@ class Function:
         The function space in which the function resides.
     coefficients : csdl.Variable -- shape=coefficients_shape
         The coefficients of the function.
+    name : str = None
+        If applicable, the name of the function.
     '''
     space: lfs.FunctionSpace
     coefficients: csdl.Variable
+    name : str = None
 
     def __post_init__(self):
         if isinstance(self.coefficients, np.ndarray):
             self.coefficients = csdl.Variable(value=self.coefficients)
+
         self.num_physical_dimensions = self.coefficients.shape[-1]
 
 
