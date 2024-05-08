@@ -12,9 +12,6 @@
 [![Forks](https://img.shields.io/github/forks/LSDOlab/lsdo_function_spaces.svg)](https://github.com/LSDOlab/lsdo_function_spaces/network)
 [![Issues](https://img.shields.io/github/issues/LSDOlab/lsdo_function_spaces.svg)](https://github.com/LSDOlab/lsdo_function_spaces/issues)
 
-
-A template repository for LSDOlab projects
-
 This repository serves as a package for creating functions from various function spaces. The intended purposes include parameterization,
 creating functional representations of quantities, surrogate modeling, and education. A key aspect of this package is that it is implemented
 using the Computational System Design Langauge (CSDL), which allows for automatic derivative computation making this a good package for 
