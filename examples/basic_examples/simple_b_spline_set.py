@@ -15,6 +15,11 @@ wing.plot()
 left_wing = wing.create_subset(function_search_names=[', 0'])
 left_wing.plot()
 
+left_wing.functions[3].coefficients += 1.
+left_wing.plot()
+
+wing.plot()
+
 # wing.project(np.array([0., 0., 0.]))
 
 print('hi')
