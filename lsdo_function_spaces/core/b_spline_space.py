@@ -205,9 +205,9 @@ if __name__ == "__main__":
     ])
 
 
-    print('points: ', b_spline.evaluate(parametric_coordinates=parametric_coordinates, parametric_derivative_order=(0,0)).value)
-    print('derivative wrt u:', b_spline.evaluate(parametric_coordinates=parametric_coordinates, parametric_derivative_order=(1,0)).value)
-    print('second derivative wrt u: ', b_spline.evaluate(parametric_coordinates=parametric_coordinates, parametric_derivative_order=(2,0)).value)
+    print('points: ', b_spline.evaluate(parametric_coordinates=parametric_coordinates, parametric_derivative_orders=(0,0)).value)
+    print('derivative wrt u:', b_spline.evaluate(parametric_coordinates=parametric_coordinates, parametric_derivative_orders=(1,0)).value)
+    print('second derivative wrt u: ', b_spline.evaluate(parametric_coordinates=parametric_coordinates, parametric_derivative_orders=(2,0)).value)
 
     # projecting_points_z = np.zeros((6,))
     # projecting_points = np.stack((parametric_coordinates[:,0], parametric_coordinates[:,1], projecting_points_z), axis=-1)

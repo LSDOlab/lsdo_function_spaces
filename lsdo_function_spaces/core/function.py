@@ -33,7 +33,7 @@ class Function:
         self.num_physical_dimensions = self.coefficients.shape[-1]
 
 
-    def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_order:tuple=None, coefficients:csdl.Variable=None,
+    def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
                  plot:bool=False) -> csdl.Variable:
         '''
         Evaluates the function.
@@ -58,7 +58,7 @@ class Function:
         if coefficients is None:
             coefficients = self.coefficients
 
-        basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_order)
+        basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
         # values = basis_matrix @ coefficients
         if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
             coefficients_reshaped = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
@@ -128,13 +128,14 @@ class Function:
             parametric_coordinates = np.hstack(parametric_coordinates_tuple)
 
         # JUST CALL self.evaluate()!
-        basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
-        coefficients_reshaped = self.coefficients.reshape((self.coefficients.size//self.num_physical_dimensions,  self.num_physical_dimensions))
-        fitting_values = csdl.Variable(value=np.zeros((parametric_coordinates.shape[0], self.num_physical_dimensions)))
-        for i in range(self.num_physical_dimensions):
-            fitting_values = fitting_values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, 
-                                                                    coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))).flatten())
-        # fitting_values = basis_matrix.dot(self.coefficients.value.reshape((-1,self.num_physical_dimensions)))
+        # basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
+        # coefficients_reshaped = self.coefficients.reshape((self.coefficients.size//self.num_physical_dimensions,  self.num_physical_dimensions))
+        # fitting_values = csdl.Variable(value=np.zeros((parametric_coordinates.shape[0], self.num_physical_dimensions)))
+        # for i in range(self.num_physical_dimensions):
+        #     fitting_values = fitting_values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, 
+        #                                                             coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))).flatten())
+        # # fitting_values = basis_matrix.dot(self.coefficients.value.reshape((-1,self.num_physical_dimensions)))
+        fitting_values = self.evaluate(parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders)
         
         coefficients = new_function_space.fit(
             values=fitting_values,
