@@ -35,6 +35,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
     '''
     num_parametric_dimensions : dict[int, int]
     spaces : list[lfs.FunctionSpace]
+    # Combine spaces with index to space into one dictionary like before
     index_to_space : dict[int, int]
     name_to_index : dict[str, int] = None   # For functions that have names.
     connections : list[int, list[int]] = None
@@ -52,6 +53,30 @@ class FunctionSetSpace(lfs.FunctionSpace):
             self.index_to_coefficient_indices[index] = list(np.arange(num_coefficients, num_coefficients + sub_function_num_coefficients))
             num_coefficients += sub_function_num_coefficients
         self.coefficients_shape = (num_coefficients, self.spaces[0].coefficients_shape[-1])
+
+
+    def generate_parametric_grid(self, grid_resolution:tuple) -> list[tuple[int, np.ndarray]]:
+        '''
+        Generates a parametric grid for the B-spline set.
+
+        Parameters
+        ----------
+        grid_resolution : tuple
+            The resolution of the grid in each parametric dimension.
+
+        Returns
+        -------
+        parametric_grid : list[tuple[int, np.ndarray]]
+            The grid of parametric coordinates for the FunctionSet (makes a grid of the specified resolution over each function in the set).
+        '''
+
+        parametric_grid = []
+        for i, space in enumerate(self.spaces):
+            space_parametric_grid = space.generate_parametric_grid(grid_resolution=grid_resolution)
+            for j in range(space_parametric_grid.shape[0]):
+                parametric_grid.append((i, space_parametric_grid[j,:]))
+
+        return parametric_grid
 
 
     def compute_basis_matrix(self, parametric_coordinates: list[tuple[int, np.ndarray]], parametric_derivative_orders: np.ndarray = None,

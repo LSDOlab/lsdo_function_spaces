@@ -212,7 +212,7 @@ if __name__ == "__main__":
     # projecting_points_z = np.zeros((6,))
     # projecting_points = np.stack((parametric_coordinates[:,0], parametric_coordinates[:,1], projecting_points_z), axis=-1)
 
-    num_points = 10000
+    num_points = 50
     x_coordinates = np.random.rand(num_points)
     y_coordinates = np.random.rand(num_points)
     z_coordinates = np.zeros((num_points,))

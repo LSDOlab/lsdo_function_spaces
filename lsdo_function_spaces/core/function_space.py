@@ -3,6 +3,7 @@ import csdl_alpha as csdl
 import numpy as np
 import scipy.sparse as sps
 import scipy.sparse.linalg as spsl
+import lsdo_function_spaces as lfs
 
 '''
 NOTE: To implement a function space (for instance, B-splines), all that must be implemented is the evaluation of the basis functions 
@@ -26,43 +27,74 @@ class FunctionSpace:
         '''
         pass
 
-    def evaluate(self, coefficients:csdl.Variable, parametric_coordinates:np.ndarray, parametric_derivative_order:tuple=None,
-                 plot:bool=False) -> csdl.Variable:
+
+    def generate_parametric_grid(self, grid_resolution:tuple) -> np.ndarray:
         '''
-        Picks a function from the function space with the given coefficients and evaluates or its derivative(s) it at the parametric coordinates.
+        Generates a parametric grid with the given resolution.
 
         Parameters
         ----------
-        coefficients : csdl.Variable -- shape=coefficients_shape or (num_coefficients,)
-            The coefficients of the function.
-        parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
-            The coordinates at which to evaluate the function.
-        parametric_derivative_order : tuple = None -- shape=(num_points, num_parametric_dimensions)
-            The order of the parametric derivatives to evaluate.
-        plot : bool = False
-            Whether or not to plot the function with the points from the result of the evaluation.
+        grid_resolution : tuple -- shape=(num_parametric_dimensions,)
+            The resolution of the grid.
 
         Returns
         -------
-        csdl.Variable
-            The function evaluated at the given coordinates.
+        np.ndarray -- shape=(num_points, num_parametric_dimensions)
+            The parametric grid.
         '''
-        basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_order)
-        if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
-            coefficients_reshaped = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
-            # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
-            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients_reshaped.shape[1])))
-            for i in range(coefficients_reshaped.shape[1]):
-                coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
-                values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
-            # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
-        elif isinstance(coefficients, csdl.Variable):
-            values = csdl.matvec(basis_matrix, coefficients)
-        else:
-            values = basis_matrix.dot(coefficients.reshape((basis_matrix.shape[1], -1)))
+        if len(grid_resolution) == 1 or isinstance(grid_resolution, int):
+            grid_resolution = (grid_resolution,)*self.num_parametric_dimensions
 
-        return values
-        # raise NotImplementedError(f"Evaluate method must be implemented in {type(self)} class.")
+        mesh_grid_input = []
+        for dimension_index in range(self.num_parametric_dimensions):
+            mesh_grid_input.append(np.linspace(0., 1., grid_resolution[dimension_index]))
+
+        parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
+        for dimensions_index in range(self.num_parametric_dimensions):
+            parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
+
+        parametric_coordinates = np.hstack(parametric_coordinates_tuple)
+
+        return parametric_coordinates
+    
+
+    # def evaluate(self, coefficients:csdl.Variable, parametric_coordinates:np.ndarray, parametric_derivative_order:tuple=None,
+    #              plot:bool=False) -> csdl.Variable:
+    #     '''
+    #     Picks a function from the function space with the given coefficients and evaluates or its derivative(s) it at the parametric coordinates.
+
+    #     Parameters
+    #     ----------
+    #     coefficients : csdl.Variable -- shape=coefficients_shape or (num_coefficients,)
+    #         The coefficients of the function.
+    #     parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
+    #         The coordinates at which to evaluate the function.
+    #     parametric_derivative_order : tuple = None -- shape=(num_points, num_parametric_dimensions)
+    #         The order of the parametric derivatives to evaluate.
+    #     plot : bool = False
+    #         Whether or not to plot the function with the points from the result of the evaluation.
+
+    #     Returns
+    #     -------
+    #     csdl.Variable
+    #         The function evaluated at the given coordinates.
+    #     '''
+    #     basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_order)
+    #     if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
+    #         coefficients_reshaped = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
+    #         # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
+    #         values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients_reshaped.shape[1])))
+    #         for i in range(coefficients_reshaped.shape[1]):
+    #             coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
+    #             values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
+    #         # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
+    #     elif isinstance(coefficients, csdl.Variable):
+    #         values = csdl.matvec(basis_matrix, coefficients)
+    #     else:
+    #         values = basis_matrix.dot(coefficients.reshape((basis_matrix.shape[1], -1)))
+
+    #     return values
+    #     # raise NotImplementedError(f"Evaluate method must be implemented in {type(self)} class.")
     
 
     def compute_basis_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None) -> sps.csc_matrix:
@@ -85,65 +117,69 @@ class FunctionSpace:
         raise NotImplementedError(f"Compute evaluation matrix method must be implemented in {type(self)} class.")
     
 
-    def refit(self, coefficients:csdl.Variable, grid_resolution:tuple=None, parametric_coordinates:np.ndarray=None, 
-              parametric_derivative_orders:np.ndarray=None, regularization_parameter:float=None) -> csdl.Variable:
-        '''
-        Picks a function from the function space with the given coefficients and evaluates or its derivative(s) it at the parametric coordinates.
-        It then uses these values to refit the function. Either a grid resolution or parametric coordinates must be provided. 
-        If both are provided, the parametric coordinates will be used. If derivatives are used, the parametric derivative orders must be provided.
+    def compute_fitting_matrix(self):
+        pass
+    
 
-        Parameters
-        ----------
-        coefficients : csdl.Variable -- shape=coefficients_shape
-            The coefficients of the function to refit.
-        grid_resolution : tuple = None -- shape=(num_parametric_dimensions,)
-            The grid resolution to use for refitting.
-        parametric_coordinates : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
-            The parametric coordinates to use for refitting.
-        parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
-            The derivative orders to use for refitting.
-        regularization_parameter : float = None
-            The regularization parameter to use for refitting. If None, no regularization is used.
+    # def refit(self, coefficients:csdl.Variable, grid_resolution:tuple=None, parametric_coordinates:np.ndarray=None, 
+    #           parametric_derivative_orders:np.ndarray=None, regularization_parameter:float=None) -> csdl.Variable:
+    #     '''
+    #     Picks a function from the function space with the given coefficients and evaluates or its derivative(s) it at the parametric coordinates.
+    #     It then uses these values to refit the function. Either a grid resolution or parametric coordinates must be provided. 
+    #     If both are provided, the parametric coordinates will be used. If derivatives are used, the parametric derivative orders must be provided.
 
-        Returns
-        -------
-        csdl.Variable
-            The refitted coefficients.
-        '''
+    #     Parameters
+    #     ----------
+    #     coefficients : csdl.Variable -- shape=coefficients_shape
+    #         The coefficients of the function to refit.
+    #     grid_resolution : tuple = None -- shape=(num_parametric_dimensions,)
+    #         The grid resolution to use for refitting.
+    #     parametric_coordinates : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
+    #         The parametric coordinates to use for refitting.
+    #     parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
+    #         The derivative orders to use for refitting.
+    #     regularization_parameter : float = None
+    #         The regularization parameter to use for refitting. If None, no regularization is used.
+
+    #     Returns
+    #     -------
+    #     csdl.Variable
+    #         The refitted coefficients.
+    #     '''
         
-        '''
-        NOTE: TODO: Look at error in L2 sense and think about whether this actually minimizes the error!!
-        Additional NOTE: When the order changes, the ideal parametric coordinate corresponding to a value seems like it might change.
-        -- To clarify: A point that is at u=0.1 in one function space may actually ideally be at u=0.15 or whatever in another function space.
-        '''
-        if parametric_coordinates is None and grid_resolution is None:
-            raise ValueError("Either grid resolution or parametric coordinates must be provided.")
-        if parametric_coordinates is not None and grid_resolution is not None:
-            print("Warning: Both grid resolution and parametric coordinates were provided. Using parametric coordinates.")
-            # raise Warning("Both grid resolution and parametric coordinates were provided. Using parametric coordinates.")
+    #     '''
+    #     NOTE: TODO: Look at error in L2 sense and think about whether this actually minimizes the error!!
+    #     Additional NOTE: When the order changes, the ideal parametric coordinate corresponding to a value seems like it might change.
+    #     -- To clarify: A point that is at u=0.1 in one function space may actually ideally be at u=0.15 or whatever in another function space.
+    #     '''
+    #     if parametric_coordinates is None and grid_resolution is None:
+    #         raise ValueError("Either grid resolution or parametric coordinates must be provided.")
+    #     if parametric_coordinates is not None and grid_resolution is not None:
+    #         print("Warning: Both grid resolution and parametric coordinates were provided. Using parametric coordinates.")
+    #         # raise Warning("Both grid resolution and parametric coordinates were provided. Using parametric coordinates.")
         
-        if parametric_coordinates is None:
-            # if grid_resolution is not None: # Don't need this line because we already error checked at the beginning.
-            mesh_grid_input = []
-            for dimension_index in range(grid_resolution.shape[0]):  # Grid resolution is a tuple of the number of points in each parametric dimension
-                mesh_grid_input.append(np.linspace(0., 1., grid_resolution[dimension_index]))
+    #     if parametric_coordinates is None:
+    #         # if grid_resolution is not None: # Don't need this line because we already error checked at the beginning.
+    #         mesh_grid_input = []
+    #         for dimension_index in range(grid_resolution.shape[0]):  # Grid resolution is a tuple of the number of points in each parametric dimension
+    #             mesh_grid_input.append(np.linspace(0., 1., grid_resolution[dimension_index]))
 
-            parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
-            for dimensions_index in range(grid_resolution.shape[0]):
-                parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
+    #         parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
+    #         for dimensions_index in range(grid_resolution.shape[0]):
+    #             parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
 
-            parametric_coordinates = np.hstack(parametric_coordinates_tuple)
+    #         parametric_coordinates = np.hstack(parametric_coordinates_tuple)
 
-        basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
-        fitting_values = basis_matrix.dot(coefficients)
+    #     basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
+    #     fitting_values = basis_matrix.dot(coefficients)
         
-        coefficients = self.fit(values=fitting_values, basis_matrix=basis_matrix, regularization_parameter=regularization_parameter)
+    #     coefficients = self.fit(values=fitting_values, basis_matrix=basis_matrix, regularization_parameter=regularization_parameter)
         
-        return coefficients
+    #     return coefficients
             
-        # raise NotImplementedError(f"Refit method must be implemented in {type(self)} class.")
-        # NOTE: This doesn't just call fit so we don't need to construct the evaluation matrix multiplie times.
-        #   - Maybe it would be easier to have the fit function optionally take in the evaluation matrix?
+    #     # raise NotImplementedError(f"Refit method must be implemented in {type(self)} class.")
+    #     # NOTE: This doesn't just call fit so we don't need to construct the evaluation matrix multiplie times.
+    #     #   - Maybe it would be easier to have the fit function optionally take in the evaluation matrix?
 
 
     
@@ -212,7 +248,42 @@ class FunctionSpace:
 
         return coefficients
         # raise NotImplementedError(f"Fit method must be implemented in {type(self)} class.")
+
+    def fit_function(self, values:np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
+            basis_matrix:sps.csc_matrix|np.ndarray=None, regularization_parameter:float=None) -> csdl.Variable:
+        '''
+        Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
+        parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
+        will be used.
+
+        Parameters
+        ----------
+        parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
+            The parametric coordinates of the data.
+        values : np.ndarray -- shape=(num_points,num_physical_dimensions)
+            The values of the data.
+        parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
+            The derivative orders to fit.
+        basis_matrix : sps.csc_matrix|np.ndarray = None -- shape=(num_points, num_coefficients)
+            The evaluation matrix to use for fitting.
+        regularization_parameter : float = None
+            The regularization parameter to use for fitting. If None, no regularization is used.
+
+        Returns
+        -------
+        lfs.Function
+        '''
+        coefficients = self.fit(values=values, parametric_coordinates=parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders,
+                                basis_matrix=basis_matrix, regularization_parameter=regularization_parameter)
+        function = lfs.Function(space=self, coefficients=coefficients)
+        return function
+        # raise NotImplementedError(f"Fit function method must be implemented in {type(self)} class.")
+
     
+    def _compute_distance_bounds(self):
+        raise NotImplementedError(f"Compute distance bounds method must be implemented in {type(self)} class.")
+
+
     # NOTE: Do I want a plot function on the space? I would also have to pass in the coefficients to plot the function. What's the point?
     # Additional NOTE: Type hinting leads to cyclic imports this way. I could just not type hint, but that's not ideal.
     # def plot(self, point_types:list=['evaluated_points'], plot_types:list=['surface'],

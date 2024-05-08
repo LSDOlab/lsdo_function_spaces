@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import csdl_alpha as csdl
 import numpy as np
+import scipy.sparse as sps
 
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
@@ -20,7 +21,7 @@ class Function:
     ----------
     space : lfs.FunctionSpace
         The function space in which the function resides.
-    coefficients : csdl.Variable -- shape=coefficients_shape or (num_coefficients,)
+    coefficients : csdl.Variable -- shape=coefficients_shape
         The coefficients of the function.
     '''
     space: lfs.FunctionSpace
@@ -29,6 +30,7 @@ class Function:
     def __post_init__(self):
         if isinstance(self.coefficients, np.ndarray):
             self.coefficients = csdl.Variable(value=self.coefficients)
+        self.num_physical_dimensions = self.coefficients.shape[-1]
 
 
     def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_order:tuple=None, coefficients:csdl.Variable=None,
@@ -42,7 +44,7 @@ class Function:
             The coordinates at which to evaluate the function.
         parametric_derivative_order : tuple = None -- shape=(num_points,num_parametric_dimensions)
             The order of the parametric derivatives to evaluate.
-        coefficients : csdl.Variable = None -- shape=coefficients_shape or (num_coefficients,)
+        coefficients : csdl.Variable = None -- shape=coefficients_shape
             The coefficients of the function.
         plot : bool = False
             Whether or not to plot the function with the points from the result of the evaluation.
@@ -56,17 +58,22 @@ class Function:
         if coefficients is None:
             coefficients = self.coefficients
 
-        function_values = self.space.evaluate(
-            coefficients=coefficients,
-            parametric_coordinates=parametric_coordinates,
-            parametric_derivative_order=parametric_derivative_order,
-            plot=plot)
-        
-        if plot:
-            function_values_plot = lfs.plot_points(function_values.value, color='#F5F0E6', size=10, show=False)
-            self.plot(opacity=0.8, additional_plotting_elements=[function_values_plot], show=True)
+        basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_order)
+        # values = basis_matrix @ coefficients
+        if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
+            coefficients_reshaped = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
+            # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
+            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients_reshaped.shape[1])))
+            for i in range(coefficients_reshaped.shape[1]):
+                coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
+                values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
+            # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
+        elif isinstance(coefficients, csdl.Variable):
+            values = csdl.matvec(basis_matrix, coefficients)
+        else:
+            values = basis_matrix.dot(coefficients.reshape((basis_matrix.shape[1], -1)))
 
-        return function_values
+        return values
     
 
     def refit(self, new_function_space:lfs.FunctionSpace, grid_resolution:tuple=None, 
@@ -120,13 +127,14 @@ class Function:
 
             parametric_coordinates = np.hstack(parametric_coordinates_tuple)
 
+        # JUST CALL self.evaluate()!
         basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
-        coefficients_reshaped = self.coefficients.reshape((self.coefficients.size//self.coefficients.shape[-1],  self.coefficients.shape[-1]))
-        fitting_values = csdl.Variable(value=np.zeros((parametric_coordinates.shape[0], self.coefficients.shape[-1])))
-        for i in range(self.coefficients.shape[-1]):
+        coefficients_reshaped = self.coefficients.reshape((self.coefficients.size//self.num_physical_dimensions,  self.num_physical_dimensions))
+        fitting_values = csdl.Variable(value=np.zeros((parametric_coordinates.shape[0], self.num_physical_dimensions)))
+        for i in range(self.num_physical_dimensions):
             fitting_values = fitting_values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, 
-                                                                                    coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))).flatten())
-        # fitting_values = basis_matrix.dot(self.coefficients.value.reshape((-1,self.coefficients.shape[-1])))
+                                                                    coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))).flatten())
+        # fitting_values = basis_matrix.dot(self.coefficients.value.reshape((-1,self.num_physical_dimensions)))
         
         coefficients = new_function_space.fit(
             values=fitting_values,
