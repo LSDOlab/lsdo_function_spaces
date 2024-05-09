@@ -183,7 +183,7 @@ class FunctionSpace:
 
 
     
-    def fit(self, values:np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
+    def fit(self, values:csdl.Variable|np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
             basis_matrix:sps.csc_matrix|np.ndarray=None, regularization_parameter:float=None) -> csdl.Variable:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
@@ -192,10 +192,10 @@ class FunctionSpace:
 
         Parameters
         ----------
+        values : csdl.Variable|np.ndarray -- shape=(num_points,num_physical_dimensions)
+            The values of the data.
         parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
             The parametric coordinates of the data.
-        values : np.ndarray -- shape=(num_points,num_physical_dimensions)
-            The values of the data.
         parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
             The derivative orders to fit.
         basis_matrix : sps.csc_matrix|np.ndarray = None -- shape=(num_points, num_coefficients)

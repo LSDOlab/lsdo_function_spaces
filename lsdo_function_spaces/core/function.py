@@ -415,42 +415,78 @@ class Function:
         plotting_elements : list
             The Vedo plotting elements that were plotted.
         '''
+        if self.coefficients is None:
+            raise ValueError("The coefficients of the function are not defined.")
+        
+        plotting_elements = additional_plotting_elements.copy()
         for point_type in point_types:
             if point_type not in ['evaluated_points', 'coefficients']:
                 raise ValueError("Invalid point type. Must be 'evaluated_points' or 'coefficients'.")
             
-            if point_type == 'coefficients' and self.coefficients is None:
-                raise ValueError("The coefficients of the function are not defined.")
-            
             if self.space.num_parametric_dimensions == 1:
                 # NOTE: Curve plotting not currently implemented for points in 3D space because I don't have a num_physical_dimensions attribute.
-                return self.plot_curve(point_type=point_type, opacity=opacity, color=color, color_map=color_map,
-                                       line_width=line_width, additional_plotting_elements=additional_plotting_elements, show=show)
+                plotting_elements = self.plot_curve(point_type=point_type, opacity=opacity, color=color, color_map=color_map,
+                                       line_width=line_width, additional_plotting_elements=plotting_elements, show=show)
             
             elif self.space.num_parametric_dimensions == 2:
-                return self.plot_surface(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
-                                        surface_texture=surface_texture, line_width=line_width, additional_plotting_elements=additional_plotting_elements, show=show)
+                plotting_elements = self.plot_surface(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+                                        surface_texture=surface_texture, line_width=line_width,
+                                        additional_plotting_elements=plotting_elements, show=show)
             elif self.space.num_parametric_dimensions == 3:
-                return self.plot_volume(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
-                                        surface_texture=surface_texture, line_width=line_width, additional_plotting_elements=additional_plotting_elements, show=show)
-            
-            elif isinstance(self.space, lfs.FunctionSetSpace):
-                # Then there must be a discrete index so loop over subfunctions and plot them
-                plotting_elements = []
-                for index, subfunction_space_index in self.space.index_to_space.items():
-                    subfunction_space = self.space.spaces[subfunction_space_index]
-                    subfunction = Function(space=subfunction_space, coefficients=self.coefficients[self.space.index_to_coefficient_indices[index]])
-                    plotting_elements += subfunction.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
-                                                          surface_texture=surface_texture, line_width=line_width, 
-                                                          additional_plotting_elements=additional_plotting_elements, show=False)
-                if show:
-                    lfs.show_plot(plotting_elements=plotting_elements, title='B-Spline Set Plot')
-                return plotting_elements
+                plotting_elements = self.plot_volume(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+                                        surface_texture=surface_texture, line_width=line_width,
+                                        additional_plotting_elements=plotting_elements, show=show)
+            else:
+                raise ValueError("The number of parametric dimensions must be 1, 2, or 3 in order to plot.")
+            # elif isinstance(self.space, lfs.FunctionSetSpace):
+            #     # Then there must be a discrete index so loop over subfunctions and plot them
+            #     plotting_elements = []
+            #     for index, subfunction_space_index in self.space.index_to_space.items():
+            #         subfunction_space = self.space.spaces[subfunction_space_index]
+            #         subfunction = Function(space=subfunction_space, coefficients=self.coefficients[self.space.index_to_coefficient_indices[index]])
+            #         plotting_elements += subfunction.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+            #                                               surface_texture=surface_texture, line_width=line_width, 
+            #                                               additional_plotting_elements=additional_plotting_elements, show=False)
+            #     if show:
+            #         lfs.show_plot(plotting_elements=plotting_elements, title='B-Spline Set Plot')
+            #     return plotting_elements
+
+        return plotting_elements
+
+
+    def plot_points(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet', 
+                    size:float=10., additional_plotting_elements:list=[], show:bool=True) -> list:
+        '''
+        Plots the points of the function.
+
+        Parameters
+        -----------
+        points_type : str = 'evaluated_points'
+            The type of points to be plotted. {evaluated_points, coefficients}
+        opactity : float = 1.
+            The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
+        color : str = '#00629B'
+            The 6 digit color code to plot the points as. If a function is provided, the function will be used to color the points.
+        color_map : str = 'jet'
+            The color map to use if the color is a function.
+        size : float = 10.
+            The size of the points.
+        additional_plotting_elemets : list = []
+            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+        show : bool = True
+            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+
+        Returns
+        -------
+        plotting_elements : list
+            The Vedo plotting elements that were plotted.
+        '''
+        import lsdo_function_spaces.utils.plotting_functions as pf
 
 
 
 
-    def plot_curve(self, point_type:str='evaluated_points', opacity:float=1., color:str|Function='#00629B', color_map:str='jet',
+    def plot_curve(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet',
                    line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
         '''
         Plots the function as a curve. NOTE: This should only be called if the function is a curve!
@@ -478,6 +514,8 @@ class Function:
         import lsdo_function_spaces.utils.plotting_functions as pf
         if self.space.num_parametric_dimensions != 1:
             raise ValueError("This function is not a curve and cannot be plotted as one.")
+        
+        plotting_elements = additional_plotting_elements.copy()
         
         # region Generate the points to plot
         if point_type == 'evaluated_points':
@@ -521,11 +559,11 @@ class Function:
 
         # Call general plot curve function to plot the points with the colors
         plotting_elements = pf.plot_curve(points=points, opacity=opacity, color=color, color_map=color_map, line_width=line_width, 
-                                          additional_plotting_elements=additional_plotting_elements, show=show)
+                                          additional_plotting_elements=plotting_elements, show=show)
         return plotting_elements
     
 
-    def plot_surface(self, point_type:str='evaluated_points', plot_types:list=['surface'], opacity:float=1., color:str|Function='#00629B',
+    def plot_surface(self, point_type:str='evaluated_points', plot_types:list=['surface'], opacity:float=1., color:str|lfs.Function='#00629B',
                         color_map:str='jet', surface_texture:str="", line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
         '''
         Plots the function as a surface. NOTE: This should only be called if the function is a surface!
@@ -560,7 +598,9 @@ class Function:
         import lsdo_function_spaces.utils.plotting_functions as pf
         if self.space.num_parametric_dimensions != 2:
             raise ValueError("This function is not a surface and cannot be plotted as one.")
-        
+
+        plotting_elements = additional_plotting_elements.copy()
+
         # region Generate the points to plot
         if point_type == 'evaluated_points':
             num_points = 25
@@ -606,13 +646,26 @@ class Function:
         # endregion Generate the points to plot
 
         # Call general plot surface function to plot the points with the colors
-        plotting_elements = pf.plot_surface(points=points, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map, 
-                                            surface_texture=surface_texture, line_width=line_width, 
-                                            additional_plotting_elements=additional_plotting_elements, show=show)
+        for plot_type in plot_types:
+            if plot_type not in ['surface', 'wireframe', 'point_cloud']:
+                raise ValueError("Invalid plot type. Must be 'surface', 'wireframe', or 'point_cloud'.")
+            if plot_type == 'point_cloud':
+                plotting_elements = pf.plot_points(points=points, opacity=opacity, color=color, color_map=color_map, size=10., 
+                                                   additional_plotting_elements=plotting_elements, show=False)
+            elif plot_type in ['surface', 'wireframe']:
+                plotting_elements = pf.plot_surface(points=points, plot_types=[plot_type], opacity=opacity, color=color, color_map=color_map, 
+                                                    surface_texture=surface_texture, line_width=line_width, 
+                                                    additional_plotting_elements=plotting_elements, show=False)
+        if show:
+            if self.name is not None:
+                pf.show_plot(plotting_elements, title=self.name, axes=1, interactive=True)
+            else:
+                pf.show_plot(plotting_elements, title="Surface", axes=1, interactive=True)
+
         return plotting_elements
     
 
-    def plot_volume(self, point_type:str='evaluated_points', plot_types:list=['volume'], opacity:float=1., color:str|Function='#00629B',
+    def plot_volume(self, point_type:str='evaluated_points', plot_types:list=['volume'], opacity:float=1., color:str|lfs.Function='#00629B',
                         color_map:str='jet', surface_texture:str="", line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
         '''
         Plots the function as a volume. NOTE: This should only be called if the function is a volume!
@@ -704,15 +757,27 @@ class Function:
 
         # Call general plot volume function to plot the points with the colors
         plotting_elements = additional_plotting_elements.copy()
-        for i in range(6):
-            if isinstance(color, list):
-                plotting_color = color[i]
-            else:
-                plotting_color = color
-            plotting_elements.append(
-                pf.plot_surface(points=points[i], plot_types=plot_types, opacity=opacity, color=plotting_color, color_map=color_map,
-                                surface_texture=surface_texture, line_width=line_width, show=False)
-            )
+        for plot_type in plot_types:
+            if plot_type not in ['volume', 'wireframe', 'point_cloud']:
+                raise ValueError("Invalid plot type. Must be 'volume', 'wireframe', or 'point_cloud'.")
+
+            for i in range(6):
+                if isinstance(color, list):
+                    plotting_color = color[i]
+                else:
+                    plotting_color = color
+
+                if plot_type == 'point_cloud':
+                    plotting_elements = pf.plot_points(points=points[i], color=plotting_color, size=10., 
+                                                       additional_plotting_elements=plotting_elements, show=False)
+                elif plot_type in ['volume', 'wireframe']:
+                    plotting_elements = pf.plot_surface(points=points[i], plot_types=[plot_type], opacity=opacity, color=plotting_color,
+                                                        color_map=color_map, surface_texture=surface_texture, line_width=line_width,
+                                                         additional_plotting_elements=plotting_elements, show=False)
+
         if show:
-            pf.show_plot(plotting_elements, title="Volume", axes=1, interactive=True)
+            if self.name is not None:
+                pf.show_plot(plotting_elements, title=self.name, axes=1, interactive=True)
+            else:
+                pf.show_plot(plotting_elements, title="Volume", axes=1, interactive=True)
         return plotting_elements

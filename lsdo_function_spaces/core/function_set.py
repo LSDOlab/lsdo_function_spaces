@@ -25,16 +25,24 @@ class FunctionSet:
         If they have names, the names of the functions in the function set.
     name : str = None
         The name of the function set.
+    function_set_space : lfs.FunctionSetSpace = None
+        The function set space that the function set is from. If None (recommended), the function set space will be inferred from the functions.
     '''
     functions: list[lfs.Function]
     function_names : list[str] = None
     name : str = None
+    function_set_space : lfs.FunctionSetSpace = None
 
     def __post_init__(self):
         if self.function_names is None:
             self.function_names = [None for _ in range(len(self.functions))]
             for i, function in enumerate(self.functions):
                 self.function_names[i] = function.name
+
+        if self.function_set_space is None:
+            self.function_set_space = lfs.FunctionSetSpace(
+                num_parametric_dimensions=[function.space.num_parametric_dimensions for function in self.functions],
+                spaces=[function.space for function in self.functions])
             
 
     def evaluate(self, parametric_coordinates:list[tuple[int, np.ndarray]], parametric_derivative_orders:list[tuple]=None,
@@ -85,14 +93,14 @@ class FunctionSet:
         return function_values
     
 
-    def refit(self, new_function_spaces:list[lfs.FunctionSpace], indices_of_functions_to_refit:list[int]=None, grid_resolution:tuple=None, 
-              parametric_coordinates:list[tuple[int,np.ndarray]]=None, parametric_derivative_orders:list[np.ndarray]=None,
-              regularization_parameter:float=None) -> lfs.FunctionSet:
+    def refit(self, new_function_spaces:list[lfs.FunctionSpace]|lfs.FunctionSpace, indices_of_functions_to_refit:list[int]=None, 
+              grid_resolution:tuple=None,  parametric_coordinates:list[tuple[int,np.ndarray]]=None,
+              parametric_derivative_orders:list[np.ndarray]=None, regularization_parameter:float=None) -> lfs.FunctionSet:
         '''
         Refits functions in the function set. Either a grid resolution or parametric coordinates must be provided. 
         If both are provided, the parametric coordinates will be used. If derivatives are used, the parametric derivative orders must be provided.
 
-        NOTE: this method will not overwrite the coefficients or function space in this object. 
+        NOTE: this method will NOT overwrite the coefficients or function space in this object. 
         It will return a new function object with the refitted coefficients.
 
         Parameters
@@ -113,12 +121,18 @@ class FunctionSet:
         lfs.FunctionSet
             The refitted function with the new function space and new coefficients.
         '''
+
         if indices_of_functions_to_refit is None:
             indices_of_functions_to_refit = np.arange(len(self.functions))
 
-        if len(new_function_spaces) != len(indices_of_functions_to_refit):
+        if isinstance(new_function_spaces, lfs.FunctionSpace):
+            new_function_spaces = [new_function_spaces] * len(self.functions)
+
+        if len(new_function_spaces) != len(indices_of_functions_to_refit) and len(new_function_spaces) != 1:
             raise ValueError("The number of new function spaces must match the number of functions to refit. " +
                              f"({len(new_function_spaces)} != {len(indices_of_functions_to_refit)})")
+        elif len(new_function_spaces) == 1:
+            new_function_spaces = new_function_spaces * len(indices_of_functions_to_refit)
 
         new_functions = []
         for i, function in enumerate(self.functions):
@@ -302,6 +316,7 @@ if __name__ == "__main__":
     degree1 = 4
     degree2 = 3
     
+    # Create functions that make up set
     space_of_cubic_b_spline_surfaces_with_10_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree1,degree1),
                                                               coefficients_shape=(num_coefficients1,num_coefficients1, 3))
     space_of_quadratic_b_spline_surfaces_with_5_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree2,degree2),
@@ -322,5 +337,29 @@ if __name__ == "__main__":
 
     b_spline2 = lfs.Function(space=space_of_quadratic_b_spline_surfaces_with_5_cp, coefficients=coefficients2, name='b_spline2')
 
+    # Make function set and plot
     my_b_spline_surface_set = lfs.FunctionSet(functions=[b_spline1, b_spline2], function_names=['b_spline1', 'b_spline2'])
     my_b_spline_surface_set.plot()
+
+
+    # Refit the function set
+    num_coefficients = 5
+    space_of_linear_b_spline_surfaces_with_5_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,1),
+                                                                coefficients_shape=(num_coefficients,num_coefficients, 3))
+    new_function_spaces = [space_of_linear_b_spline_surfaces_with_5_cp, space_of_linear_b_spline_surfaces_with_5_cp]
+    fitting_grid_resolution = 50
+    new_function_set = my_b_spline_surface_set.refit(new_function_spaces=new_function_spaces, 
+                                                     grid_resolution=(fitting_grid_resolution,fitting_grid_resolution))
+    new_function_set.plot()
+
+
+    # Once again, refit the function set but only refit the first function
+    num_coefficients = 5
+    space_of_linear_b_spline_surfaces_with_5_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,1),
+                                                                coefficients_shape=(num_coefficients,num_coefficients, 3))
+    new_function_spaces = [space_of_linear_b_spline_surfaces_with_5_cp]
+    fitting_grid_resolution = 50
+    new_function_set = my_b_spline_surface_set.refit(new_function_spaces=new_function_spaces, 
+                                                     indices_of_functions_to_refit=[0],
+                                                     grid_resolution=(fitting_grid_resolution,fitting_grid_resolution))
+    new_function_set.plot()
