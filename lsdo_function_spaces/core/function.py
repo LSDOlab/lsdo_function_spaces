@@ -37,6 +37,13 @@ class Function:
         self.num_physical_dimensions = self.coefficients.shape[-1]
 
 
+    def copy(self) -> lfs.Function:
+        '''
+        Returns a copy of the function.
+        '''
+        return lfs.Function(space=self.space, coefficients=self.coefficients, name=self.name)
+
+
     def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
                  plot:bool=False) -> csdl.Variable:
         '''
