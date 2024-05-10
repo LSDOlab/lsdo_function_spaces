@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.sparse as sps
-from lsdo_function_spaces import FunctionSpace
+from lsdo_function_spaces import FunctionSpace, Function
 
 from dataclasses import dataclass
 
@@ -22,7 +22,7 @@ class BSplineSpace(FunctionSpace):
         The degree of the B-spline in each parametric dimension.
     coefficients_shape : tuple
         The shape/structure that the coefficients are arranged in. For a surface (num_parametric_dimensions=2), the shape would be:
-          (nu,nv,num_physical_dimensions)
+          (nu,nv)
     knots : np.ndarray = None -- shape=(num_knots,)
         The knot vector for the B-spline. If None, an open uniform knot vector will be generated.
     knot_indices : list[np.ndarray] = None -- shape of list=(num_parametric_dimensions,), shape of inner np.ndarray=(num_knots_in_that_dimension,)
@@ -63,6 +63,26 @@ class BSplineSpace(FunctionSpace):
                 num_knots_i = self.coefficients_shape[i] + self.degree[i] + 1
                 self.knot_indices.append(np.arange(knot_index, knot_index + num_knots_i))
                 knot_index += num_knots_i
+
+    def _compute_distance_bounds(self, point:np.ndarray, function:Function) -> float:
+        '''
+        Computes the distance bounds for the given point.
+        '''
+        if not hasattr(function, 'bounding_box'):
+            coefficients = function.coefficients.value.reshape((-1, function.num_physical_dimensions))
+            function.bounding_box = np.zeros((2, coefficients.shape[-1]))
+            if self.num_parametric_dimensions == 1:
+                function.bounding_box[0, 0] = np.min(coefficients)
+                function.bounding_box[1, 0] = np.max(coefficients)
+            else:
+                function.bounding_box[0, :] = np.min(coefficients, axis=0)
+                function.bounding_box[1, :] = np.max(coefficients, axis=0)
+
+        neg = function.bounding_box[0] - point
+        pos = point - function.bounding_box[1]
+        return np.linalg.norm(np.maximum(np.maximum(neg, pos), 0))
+        
+
 
     def compute_basis_matrix(self, parametric_coordinates: np.ndarray, parametric_derivative_orders: np.ndarray = None,
                                    expansion_factor:int=None) -> sps.csc_matrix:
@@ -108,7 +128,7 @@ class BSplineSpace(FunctionSpace):
         row_indices = np.zeros(len(data), np.int32)
         col_indices = np.zeros(len(data), np.int32)
 
-        num_coefficient_elements = np.prod(self.coefficients_shape[:-1])
+        num_coefficient_elements = np.prod(self.coefficients_shape)
 
         if num_parametric_dimensions == 1:
             u_vec = parametric_coordinates[:,0].copy()
@@ -176,15 +196,14 @@ class BSplineSpace(FunctionSpace):
             return basis_matrix
 
 
-
-if __name__ == "__main__":
+def test_single_surface():
     import csdl_alpha as csdl
     recorder = csdl.Recorder(inline=True)
     recorder.start()
 
     num_coefficients = 5
     space_of_linear_25_cp_b_spline_surfaces = BSplineSpace(num_parametric_dimensions=2, degree=(2,2), 
-                                                           coefficients_shape=(num_coefficients,num_coefficients,3))
+                                                           coefficients_shape=(num_coefficients,num_coefficients))
     
     import lsdo_function_spaces as lfs
     coefficients_line = np.linspace(0., 1., num_coefficients)
@@ -225,7 +244,7 @@ if __name__ == "__main__":
         projected_points_parametric = b_spline.project(points=projecting_points, plot=False, grid_search_density_parameter=1)
     t2 = time.time()
     print('average time: ', (t2-t1)/num_trials)
-    projected_points = b_spline.evaluate(parametric_coordinates=projected_points_parametric, plot=True).value
+    projected_points = b_spline.evaluate(parametric_coordinates=projected_points_parametric, plot=False).value
 
     import vedo
     # b_spline_plot = b_spline.plot(show=False, opacity=0.8)
@@ -233,16 +252,16 @@ if __name__ == "__main__":
     # projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
     # vedo.show(b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
 
-    new_b_spline_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,1), coefficients_shape=(4,4,3))
+    new_b_spline_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,1), coefficients_shape=(4,4))
     new_b_spline = b_spline.refit(new_function_space=new_b_spline_space)
     # new_b_spline.plot()
-    projected_points_parametric = new_b_spline.project(points=projecting_points, plot=True, grid_search_density_parameter=1)
+    projected_points_parametric = new_b_spline.project(points=projecting_points, plot=False, grid_search_density_parameter=1)
     projected_points = new_b_spline.evaluate(parametric_coordinates=projected_points_parametric).value
     new_b_spline_plot = new_b_spline.plot(show=False, opacity=0.8)
     projected_points_plot = vedo.Points(projected_points, r=10, c='g')
     projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
     plotter = vedo.Plotter()
-    plotter.show(new_b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
+    # plotter.show(new_b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
 
     # num_fitting_points = 25
     # u_vec = np.einsum('i,j->ij', np.linspace(0., 1., num_fitting_points), np.ones(num_fitting_points)).flatten().reshape((-1,1))
@@ -257,3 +276,69 @@ if __name__ == "__main__":
     # new_b_spline = fit_b_spline(fitting_points=grid_points, parametric_coordinates=parametric_coordinates, num_coefficients=(15,),
     #                             order=(5,), regularization_parameter=1.e-3)
     # new_b_spline.plot()
+
+def test_multiple_surfaces():
+    import lsdo_function_spaces as lfs
+    import csdl_alpha as csdl
+    recorder = csdl.Recorder(inline=True)
+    recorder.start()
+
+    num_coefficients1 = 10
+    num_coefficients2 = 5
+    degree1 = 4
+    degree2 = 3
+    
+    # Create functions that make up set
+    space_of_cubic_b_spline_surfaces_with_10_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree1,degree1),
+                                                              coefficients_shape=(num_coefficients1,num_coefficients1))
+    space_of_quadratic_b_spline_surfaces_with_5_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree2,degree2),
+                                                              coefficients_shape=(num_coefficients2,num_coefficients2))
+
+    coefficients_line = np.linspace(0., 1., num_coefficients1)
+    coefficients_y, coefficients_x = np.meshgrid(coefficients_line,coefficients_line)
+    coefficients1 = np.stack((coefficients_x, coefficients_y, 0.1*np.random.rand(num_coefficients1,num_coefficients1)), axis=-1)
+    coefficients1 = coefficients1.reshape((num_coefficients1,num_coefficients1,3))
+
+    b_spline1 = lfs.Function(space=space_of_cubic_b_spline_surfaces_with_10_cp, coefficients=coefficients1, name='b_spline1')
+
+    coefficients_line = np.linspace(0., 1., num_coefficients2)
+    coefficients_y, coefficients_x = np.meshgrid(coefficients_line,coefficients_line)
+    coefficients_y += 1.5
+    coefficients2 = np.stack((coefficients_x, coefficients_y, 0.1*np.random.rand(num_coefficients2,num_coefficients2)), axis=-1)
+    coefficients2 = coefficients2.reshape((num_coefficients2,num_coefficients2,3))
+
+    b_spline2 = lfs.Function(space=space_of_quadratic_b_spline_surfaces_with_5_cp, coefficients=coefficients2, name='b_spline2')
+
+    # Make function set and plot
+    my_b_spline_surface_set = lfs.FunctionSet(functions=[b_spline1, b_spline2], function_names=['b_spline1', 'b_spline2'])
+
+
+    num_points = 50
+    x_coordinates = np.random.rand(num_points)
+    y_coordinates = np.random.rand(num_points)
+    z_coordinates = np.zeros((num_points,))
+    projecting_points_1 = np.stack((x_coordinates, y_coordinates, z_coordinates), axis=-1)
+
+    projecting_points_2 = np.stack((x_coordinates, y_coordinates+1.5, z_coordinates), axis=-1)
+
+    projecting_points = np.vstack((projecting_points_1, projecting_points_2))
+
+    import time
+    import vedo
+    num_trials = 1
+    t1 = time.time()
+    for i in range(num_trials):
+        projected_points_parametric = my_b_spline_surface_set.project(points=projecting_points, plot=False, grid_search_density_parameter=1)
+    t2 = time.time()
+    print('average time: ', (t2-t1)/num_trials)
+    projected_points = my_b_spline_surface_set.evaluate(parametric_coordinates=projected_points_parametric, plot=True).value
+    new_b_spline_plot = my_b_spline_surface_set.plot(show=False, opacity=0.8)
+    projected_points_plot = vedo.Points(projected_points, r=10, c='g')
+    projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
+    plotter = vedo.Plotter()
+    # plotter.show(new_b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
+
+
+# if __name__ == '__main__':
+#     test_single_surface()
+#     test_multiple_surfaces()

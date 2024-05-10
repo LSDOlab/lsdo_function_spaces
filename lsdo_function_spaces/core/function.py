@@ -37,6 +37,9 @@ class Function:
         self.num_physical_dimensions = self.coefficients.shape[-1]
 
 
+    def _compute_distance_bounds(self, point):
+        return self.space._compute_distance_bounds(point, self)
+
     def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
                  plot:bool=False) -> csdl.Variable:
         '''
@@ -63,7 +66,7 @@ class Function:
             coefficients = self.coefficients
 
         basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
-        # values = basis_matrix @ coefficients
+        # # values = basis_matrix @ coefficients
         if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
             coefficients_reshaped = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
             # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
@@ -71,11 +74,16 @@ class Function:
             for i in range(coefficients_reshaped.shape[1]):
                 coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
                 values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
-            # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
-        elif isinstance(coefficients, csdl.Variable):
-            values = csdl.matvec(basis_matrix, coefficients)
         else:
-            values = basis_matrix.dot(coefficients.reshape((basis_matrix.shape[1], -1)))
+            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], -1))
+        
+            # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
+        # elif isinstance(coefficients, csdl.Variable):
+        #     values = csdl.matvec(basis_matrix, coefficients)
+        # else:
+        #     values = basis_matrix.dot(coefficients.reshape((basis_matrix.shape[1], -1)))
+
+        # values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], -1))
 
         return values
     
@@ -199,7 +207,7 @@ class Function:
             parametric_grid_search = np.hstack(parametric_coordinates_tuple)
 
             # Evaluate grid of points
-            function_values = self.evaluate(parametric_grid_search).value
+            function_values = self.evaluate(parametric_grid_search, coefficients=self.coefficients.value)
 
             # Find closest point on function to each point to project
             # closest_point_indices = np.argmin(np.linalg.norm(function_values - points, axis=1))
@@ -286,7 +294,7 @@ class Function:
         points_left_to_converge = np.arange(points.shape[0])
         for j in range(max_newton_iterations):
             # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
-            function_values = self.evaluate(current_guess[points_left_to_converge]).value
+            function_values = self.evaluate(current_guess[points_left_to_converge], coefficients=self.coefficients.value)
             displacements = (points[points_left_to_converge] - function_values).reshape(points_left_to_converge.shape[0], num_physical_dimensions)
             
             d_displacement_d_parametric = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, self.space.num_parametric_dimensions))

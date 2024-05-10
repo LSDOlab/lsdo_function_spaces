@@ -280,7 +280,7 @@ class FunctionSpace:
         # raise NotImplementedError(f"Fit function method must be implemented in {type(self)} class.")
 
     
-    def _compute_distance_bounds(self):
+    def _compute_distance_bounds(self, point, function):
         raise NotImplementedError(f"Compute distance bounds method must be implemented in {type(self)} class.")
 
 

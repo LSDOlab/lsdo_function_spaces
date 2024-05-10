@@ -4,10 +4,59 @@ from dataclasses import dataclass
 import csdl_alpha as csdl
 import numpy as np
 import scipy.sparse as sps
+import concurrent.futures
+
 
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
+
+
+def find_best_surface_chunked(chunk, functions:list[lfs.Function], options):
+    # New approach - 2 stages: 
+    # 1. Find lower bound of error for each surface via very fast method (eg. bounding box)
+    # 2. Project point onto surfaces in order of increasing lower bound of error; 
+    #    stop when next lower bound error is greater than current best error
+    #
+    # Each function space should have a method to compute the lower bound of error
+    # eg, for b-splines, this could be the bounding box of the control points
+
+    sorting_time = 0
+    projection_time = 0
+    projections_skipped = 0
+    projections_performed = 0
+
+    results = []
+    for point in chunk:
+
+        lower_bounds = {i: function._compute_distance_bounds(point) for i, function in enumerate(functions)}
+        sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: lower_bounds[x])
+
+        # project onto the first surface
+        best_surface = sorted_surfaces[0]
+        function = functions[best_surface]
+        best_coord = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
+                                      max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
+        projections_performed += 1
+        best_error = np.linalg.norm(function.evaluate(best_coord, coefficients=function.coefficients.value) - point)
+
+        for name in sorted_surfaces:
+            function = functions[name]
+            bound = lower_bounds[name]
+            if bound > best_error:
+                projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
+                break
+            parametric_coordinate = function.project(point.reshape(1,-1))
+            projections_performed += 1
+            error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
+            if error < best_error:
+                best_surface = name
+                best_coord = parametric_coordinate
+                best_error = error
+        results.append((best_surface, best_coord))
+
+    return results
+
 
 
 
@@ -80,9 +129,14 @@ class FunctionSet:
         function_values_list = []
         for i, function in enumerate(self.functions):
             indices = np.where(np.array(function_indices) == i)[0]
+            para_coords = np.array([function_parametric_coordinates[j] for j in indices]).reshape(-1, function.space.num_parametric_dimensions)
+            if parametric_derivative_orders is not None:
+                para_derivs = [parametric_derivative_orders[j] for j in indices]
+            else:
+                para_derivs = None
             if len(indices) > 0:
-                function_values_list += function.evaluate(parametric_coordinates=[(i, function_parametric_coordinates[j]) for j in indices],
-                                                     parametric_derivative_orders=[parametric_derivative_orders[j] for j in indices])
+                function_values_list.append(function.evaluate(parametric_coordinates=para_coords,
+                                                     parametric_derivative_orders=para_derivs))
 
         # Arrange the function values back into the correct element of the array
         function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates), function_values_list[0].shape[-1])))
@@ -149,7 +203,7 @@ class FunctionSet:
         return new_function_set
 
 
-    def project(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
+    def project(self, points:np.ndarray, num_workers:int=8, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
@@ -175,8 +229,26 @@ class FunctionSet:
         plot : bool = False
             Whether or not to plot the projection.
         '''
-        # TODO: Implement this method
-        raise NotImplementedError("This method has not been implemented yet.")
+
+        options = {'direction': direction, 'grid_search_density_parameter': grid_search_density_parameter,
+                     'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance}
+        
+        if len(points.shape) == 1:
+            points = points.reshape(1, -1)
+
+        # make sure there aren't more workers than points
+        num_workers = min(num_workers, points.shape[0])
+
+        # Divide the points into chunks and run in parallel
+        chunks = np.array_split(points, num_workers)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+            results = executor.map(find_best_surface_chunked, chunks, [self.functions]*len(chunks), [options]*len(chunks))
+
+        output = []
+        for result in results:
+            output.extend(result)
+
+        return output
 
 
 

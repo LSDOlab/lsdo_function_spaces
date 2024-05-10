@@ -220,39 +220,39 @@ class FunctionSetSpace(lfs.FunctionSpace):
 
 
 
-if __name__ == "__main__":
-    import csdl_alpha as csdl
-    recorder = csdl.Recorder(inline=True)
-    recorder.start()
+# if __name__ == "__main__":
+#     import csdl_alpha as csdl
+#     recorder = csdl.Recorder(inline=True)
+#     recorder.start()
 
-    num_coefficients1 = 10
-    num_coefficients2 = 5
-    degree1 = 4
-    degree2 = 3
+#     num_coefficients1 = 10
+#     num_coefficients2 = 5
+#     degree1 = 4
+#     degree2 = 3
     
-    space_of_cubic_b_spline_surfaces_with_10_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree1,degree1),
-                                                              coefficients_shape=(num_coefficients1,num_coefficients1, 3))
-    space_of_quadratic_b_spline_surfaces_with_5_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree2,degree2),
-                                                              coefficients_shape=(num_coefficients2,num_coefficients2, 3))
-    b_spline_spaces = [space_of_cubic_b_spline_surfaces_with_10_cp, space_of_quadratic_b_spline_surfaces_with_5_cp]
-    index_to_space = {0:0, 1:1}
-    name_to_index = {'space_of_cubic_b_spline_surfaces_with_10_cp':0, 'quadratic_b_spline_surfaces_5_cp':1}
-    num_parametric_dimensions = {0:2, 1:2}
+#     space_of_cubic_b_spline_surfaces_with_10_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree1,degree1),
+#                                                               coefficients_shape=(num_coefficients1,num_coefficients1, 3))
+#     space_of_quadratic_b_spline_surfaces_with_5_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree2,degree2),
+#                                                               coefficients_shape=(num_coefficients2,num_coefficients2, 3))
+#     b_spline_spaces = [space_of_cubic_b_spline_surfaces_with_10_cp, space_of_quadratic_b_spline_surfaces_with_5_cp]
+#     index_to_space = {0:0, 1:1}
+#     name_to_index = {'space_of_cubic_b_spline_surfaces_with_10_cp':0, 'quadratic_b_spline_surfaces_5_cp':1}
+#     num_parametric_dimensions = {0:2, 1:2}
 
-    b_spline_set_space = lfs.FunctionSetSpace(num_parametric_dimensions=num_parametric_dimensions, spaces=b_spline_spaces,
-                                            index_to_space=index_to_space, name_to_index=name_to_index)
+#     b_spline_set_space = lfs.FunctionSetSpace(num_parametric_dimensions=num_parametric_dimensions, spaces=b_spline_spaces,
+#                                             index_to_space=index_to_space, name_to_index=name_to_index)
 
-    coefficients_line = np.linspace(0., 1., num_coefficients1)
-    coefficients_y, coefficients_x = np.meshgrid(coefficients_line,coefficients_line)
-    coefficients1 = np.stack((coefficients_x, coefficients_y, 0.1*np.random.rand(num_coefficients1,num_coefficients1)), axis=-1)
+#     coefficients_line = np.linspace(0., 1., num_coefficients1)
+#     coefficients_y, coefficients_x = np.meshgrid(coefficients_line,coefficients_line)
+#     coefficients1 = np.stack((coefficients_x, coefficients_y, 0.1*np.random.rand(num_coefficients1,num_coefficients1)), axis=-1)
 
-    coefficients_line = np.linspace(0., 1., num_coefficients2)
-    coefficients_y, coefficients_x = np.meshgrid(coefficients_line,coefficients_line)
-    coefficients_y += 1.5
-    coefficients2 = np.stack((coefficients_x, coefficients_y, 0.1*np.random.rand(num_coefficients2,num_coefficients2)), axis=-1)
+#     coefficients_line = np.linspace(0., 1., num_coefficients2)
+#     coefficients_y, coefficients_x = np.meshgrid(coefficients_line,coefficients_line)
+#     coefficients_y += 1.5
+#     coefficients2 = np.stack((coefficients_x, coefficients_y, 0.1*np.random.rand(num_coefficients2,num_coefficients2)), axis=-1)
 
-    coefficients = np.vstack((coefficients1.reshape((-1,3)), coefficients2.reshape((-1,3))))
-    coefficients = csdl.Variable(value=coefficients)
+#     coefficients = np.vstack((coefficients1.reshape((-1,3)), coefficients2.reshape((-1,3))))
+#     coefficients = csdl.Variable(value=coefficients)
 
-    my_b_spline_surface_set = lfs.Function(space=b_spline_set_space, coefficients=coefficients)
-    my_b_spline_surface_set.plot()
+#     my_b_spline_surface_set = lfs.Function(space=b_spline_set_space, coefficients=coefficients)
+#     my_b_spline_surface_set.plot()
