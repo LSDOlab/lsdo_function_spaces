@@ -74,13 +74,13 @@ class FunctionSet:
         If they have names, the names of the functions in the function set.
     name : str = None
         The name of the function set.
-    function_set_space : lfs.FunctionSetSpace = None
+    space : lfs.FunctionSetSpace = None
         The function set space that the function set is from. If None (recommended), the function set space will be inferred from the functions.
     '''
     functions: list[lfs.Function]
     function_names : list[str] = None
     name : str = None
-    function_set_space : lfs.FunctionSetSpace = None
+    space : lfs.FunctionSetSpace = None
 
     def __post_init__(self):
         if self.function_names is None:
@@ -88,10 +88,24 @@ class FunctionSet:
             for i, function in enumerate(self.functions):
                 self.function_names[i] = function.name
 
-        if self.function_set_space is None:
-            self.function_set_space = lfs.FunctionSetSpace(
+        if self.space is None:
+            self.space = lfs.FunctionSetSpace(
                 num_parametric_dimensions=[function.space.num_parametric_dimensions for function in self.functions],
                 spaces=[function.space for function in self.functions])
+            
+
+    def copy(self) -> lfs.FunctionSet:
+        '''
+        Copies the function set.
+
+        Returns
+        -------
+        function_set : lfs.FunctionSet
+            The copied function set.
+        '''
+        functions = [function.copy() for function in self.functions]
+        function_set = lfs.FunctionSet(functions=functions, function_names=self.function_names, name=self.name)
+        return function_set
             
 
     def evaluate(self, parametric_coordinates:list[tuple[int, np.ndarray]], parametric_derivative_orders:list[tuple]=None,
@@ -302,7 +316,7 @@ class FunctionSet:
         return function_indices
     
 
-    def create_subset(self, function_indices:list[int]=None, function_search_names:list[str]=None) -> lfs.FunctionSet:
+    def create_subset(self, function_indices:list[int]=None, function_search_names:list[str]=None, name:str=None) -> lfs.FunctionSet:
         '''
         Creates a subset of the function set with the given indices. Either the function indices or the function search names must be provided.
 
@@ -312,6 +326,8 @@ class FunctionSet:
             The indices of the functions to include in the subset.
         function_search_names : list[str]
             The search strings to use to find the functions to include in the subset.
+        name : str
+            The name of the subset.
 
         Returns
         -------
@@ -328,7 +344,7 @@ class FunctionSet:
 
         functions = [self.functions[i] for i in function_indices]
         function_names = [self.function_names[i] for i in function_indices]
-        subset = lfs.FunctionSet(functions=functions, function_names=function_names)
+        subset = lfs.FunctionSet(functions=functions, function_names=function_names, name=name)
         return subset
 
 
