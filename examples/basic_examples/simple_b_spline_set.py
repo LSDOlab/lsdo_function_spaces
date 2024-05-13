@@ -23,7 +23,7 @@ wing.plot(point_types=['coefficients'], plot_types=['point_cloud'], color='#C692
 
 
 # wing.project(np.array([0., 0., 0.]))
-new_function_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,3), coefficients_shape=(10,30,3))
+new_function_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,3), coefficients_shape=(10,30))
 new_function_spaces = [new_function_space]*len(wing.functions)
 new_wing = wing.refit(new_function_spaces=new_function_spaces, grid_resolution=(30,100))
 plotting_elements = new_wing.plot(show=False)

@@ -42,7 +42,7 @@ class FunctionSpace:
         np.ndarray -- shape=(num_points, num_parametric_dimensions)
             The parametric grid.
         '''
-        if len(grid_resolution) == 1 or isinstance(grid_resolution, int):
+        if isinstance(grid_resolution, int) or len(grid_resolution) == 1:
             grid_resolution = (grid_resolution,)*self.num_parametric_dimensions
 
         mesh_grid_input = []

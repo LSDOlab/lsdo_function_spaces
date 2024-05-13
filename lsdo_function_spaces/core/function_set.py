@@ -141,6 +141,7 @@ class FunctionSet:
 
         # Evaluate each function at the given coordinates
         function_values_list = []
+        functions_with_points = []
         for i, function in enumerate(self.functions):
             indices = np.where(np.array(function_indices) == i)[0]
             para_coords = np.array([function_parametric_coordinates[j] for j in indices]).reshape(-1, function.space.num_parametric_dimensions)
@@ -151,12 +152,19 @@ class FunctionSet:
             if len(indices) > 0:
                 function_values_list.append(function.evaluate(parametric_coordinates=para_coords,
                                                      parametric_derivative_orders=para_derivs))
+                functions_with_points.append(i)
 
         # Arrange the function values back into the correct element of the array
         function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates), function_values_list[0].shape[-1])))
         for i, function_value in enumerate(function_values_list):
-            indices = list(np.where(np.array(function_indices) == i)[0])
-            function_values = function_values.set(csdl.slice[indices], function_value)
+            indices = list(np.where(np.array(function_indices) == functions_with_points[i])[0])
+            # indices = list(np.where(np.array(function_indices) == i)[0])
+            if len(indices) == 0:
+                continue
+            if len(indices) == function_values.shape[0]:
+                function_values = function_value
+            else:
+                function_values = function_values.set(csdl.slice[indices], function_value)
 
         return function_values
     
@@ -217,7 +225,7 @@ class FunctionSet:
         return new_function_set
 
 
-    def project(self, points:np.ndarray, num_workers:int=8, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
+    def project(self, points:np.ndarray, num_workers:int=1, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
@@ -254,13 +262,23 @@ class FunctionSet:
         num_workers = min(num_workers, points.shape[0])
 
         # Divide the points into chunks and run in parallel
-        chunks = np.array_split(points, num_workers)
-        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-            results = executor.map(find_best_surface_chunked, chunks, [self.functions]*len(chunks), [options]*len(chunks))
+        if num_workers > 1:
+            chunks = np.array_split(points, num_workers)
+            with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+                results = executor.map(find_best_surface_chunked, chunks, [self.functions]*len(chunks), [options]*len(chunks))
 
-        output = []
-        for result in results:
-            output.extend(result)
+            output = []
+            for result in results:
+                output.extend(result)
+        else:
+            output = find_best_surface_chunked(points, self.functions, options)
+
+        if plot:
+            projection_results = self.evaluate(output).value
+            plotting_elements = []
+            plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
+            plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
+            self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
 
         return output
 
@@ -406,9 +424,9 @@ if __name__ == "__main__":
     
     # Create functions that make up set
     space_of_cubic_b_spline_surfaces_with_10_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree1,degree1),
-                                                              coefficients_shape=(num_coefficients1,num_coefficients1, 3))
+                                                              coefficients_shape=(num_coefficients1,num_coefficients1))
     space_of_quadratic_b_spline_surfaces_with_5_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(degree2,degree2),
-                                                              coefficients_shape=(num_coefficients2,num_coefficients2, 3))
+                                                              coefficients_shape=(num_coefficients2,num_coefficients2))
 
     coefficients_line = np.linspace(0., 1., num_coefficients1)
     coefficients_y, coefficients_x = np.meshgrid(coefficients_line,coefficients_line)
@@ -433,7 +451,7 @@ if __name__ == "__main__":
     # Refit the function set
     num_coefficients = 5
     space_of_linear_b_spline_surfaces_with_5_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,1),
-                                                                coefficients_shape=(num_coefficients,num_coefficients, 3))
+                                                                coefficients_shape=(num_coefficients,num_coefficients))
     new_function_spaces = [space_of_linear_b_spline_surfaces_with_5_cp, space_of_linear_b_spline_surfaces_with_5_cp]
     fitting_grid_resolution = 50
     new_function_set = my_b_spline_surface_set.refit(new_function_spaces=new_function_spaces, 
@@ -444,7 +462,7 @@ if __name__ == "__main__":
     # Once again, refit the function set but only refit the first function
     num_coefficients = 5
     space_of_linear_b_spline_surfaces_with_5_cp = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,1),
-                                                                coefficients_shape=(num_coefficients,num_coefficients, 3))
+                                                                coefficients_shape=(num_coefficients,num_coefficients))
     new_function_spaces = [space_of_linear_b_spline_surfaces_with_5_cp]
     fitting_grid_resolution = 50
     new_function_set = my_b_spline_surface_set.refit(new_function_spaces=new_function_spaces, 

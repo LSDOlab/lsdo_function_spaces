@@ -52,7 +52,7 @@ def import_file(file_name:str, parallelize:bool=True) -> lfs.FunctionSet:
             coefficients_shape = tuple([len(knots_u)-order_u, len(knots_v)-order_v])
             knots = np.hstack((knots_u, knots_v))
             b_spline_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(order_u-1, order_v-1),
-                                              coefficients_shape=coefficients_shape + (3,), knots=knots)
+                                              coefficients_shape=coefficients_shape, knots=knots)
             # NOTE: # Hardcoding 3 for num_physical_dimensions because this import is hardcoded for OpenVSP anyway
             b_spline_spaces[space_name] = b_spline_space
 

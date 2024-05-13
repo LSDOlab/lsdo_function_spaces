@@ -122,11 +122,6 @@ class Function:
             The refitted function with the new function space and new coefficients.
         '''
 
-        '''
-        NOTE: TODO: Look at error in L2 sense and think about whether this actually minimizes the error!!
-        Additional NOTE: When the order changes, the ideal parametric coordinate corresponding to a value seems like it might change.
-        -- To clarify: A point that is at u=0.1 in one function space may actually ideally be at u=0.15 or whatever in another function space.
-        '''
         if parametric_coordinates is None and grid_resolution is None:
             # raise ValueError("Either grid resolution or parametric coordinates must be provided.")
             grid_resolution = (100,)*self.space.num_parametric_dimensions
@@ -203,15 +198,16 @@ class Function:
             # The grid search will be used to find the initial guess for the Newton iterations
             
             # Generate parametric grid
-            mesh_grid_input = []
-            for dimension_index in range(self.space.num_parametric_dimensions):
-                mesh_grid_input.append(np.linspace(0., 1., grid_search_resolution))
+            # mesh_grid_input = []
+            # for dimension_index in range(self.space.num_parametric_dimensions):
+            #     mesh_grid_input.append(np.linspace(0., 1., grid_search_resolution))
 
-            parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
-            for dimensions_index in range(self.space.num_parametric_dimensions):
-                parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
+            # parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
+            # for dimensions_index in range(self.space.num_parametric_dimensions):
+            #     parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
 
-            parametric_grid_search = np.hstack(parametric_coordinates_tuple)
+            # parametric_grid_search = np.hstack(parametric_coordinates_tuple)
+            parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
 
             # Evaluate grid of points
             function_values = self.evaluate(parametric_grid_search, coefficients=self.coefficients.value)
@@ -383,10 +379,10 @@ class Function:
             current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
 
         if plot:
-            function_values = self.evaluate(current_guess).value
+            projection_results = self.evaluate(current_guess).value
             plotting_elements = []
             plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
-            plotting_elements.append(lfs.plot_points(function_values, color='#F5F0E6', size=10, show=False))
+            plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
             self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
 
         return current_guess
