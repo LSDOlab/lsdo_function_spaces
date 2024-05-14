@@ -38,7 +38,13 @@ def find_best_surface_chunked(chunk, functions:list[lfs.Function], options):
         best_coord = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
                                       max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
         projections_performed += 1
-        best_error = np.linalg.norm(function.evaluate(best_coord, coefficients=function.coefficients.value) - point)
+        direction = options['direction']
+        if direction is None:
+            best_error = np.linalg.norm(function.evaluate(best_coord, coefficients=function.coefficients.value) - point)
+        else:
+            function_value = function.evaluate(best_coord, coefficients=function.coefficients.value)
+            displacement = (point - function_value).reshape((-1,))
+            best_error = (displacement.dot(displacement) - np.dot(displacement, direction)**2)**(1/2)
 
         for name in sorted_surfaces:
             function = functions[name]
@@ -46,9 +52,13 @@ def find_best_surface_chunked(chunk, functions:list[lfs.Function], options):
             if bound > best_error:
                 projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
                 break
-            parametric_coordinate = function.project(point.reshape(1,-1))
+            parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
+                                                     max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
             projections_performed += 1
-            error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
+            if direction is None:
+                error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
+            else:
+                error = (displacement.dot(displacement) - np.dot(displacement, direction)**2)**(1/2)
             if error < best_error:
                 best_surface = name
                 best_coord = parametric_coordinate
@@ -164,6 +174,8 @@ class FunctionSet:
             if len(indices) == function_values.shape[0]:
                 function_values = function_value
             else:
+                if function_value.shape[0] == 1:
+                    function_value = function_value.reshape((function_value.size,))
                 function_values = function_values.set(csdl.slice[indices], function_value)
 
         return function_values

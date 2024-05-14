@@ -64,23 +64,28 @@ class BSplineSpace(FunctionSpace):
                 self.knot_indices.append(np.arange(knot_index, knot_index + num_knots_i))
                 knot_index += num_knots_i
 
-    def _compute_distance_bounds(self, point:np.ndarray, function:Function) -> float:
+    def _compute_distance_bounds(self, point:np.ndarray, function:Function, direction=None) -> float:
         '''
         Computes the distance bounds for the given point.
         '''
-        if not hasattr(function, 'bounding_box'):
-            coefficients = function.coefficients.value.reshape((-1, function.num_physical_dimensions))
-            function.bounding_box = np.zeros((2, coefficients.shape[-1]))
-            if self.num_parametric_dimensions == 1:
-                function.bounding_box[0, 0] = np.min(coefficients)
-                function.bounding_box[1, 0] = np.max(coefficients)
-            else:
-                function.bounding_box[0, :] = np.min(coefficients, axis=0)
-                function.bounding_box[1, :] = np.max(coefficients, axis=0)
+        if direction is None:
+            if not hasattr(function, 'bounding_box'):
+                coefficients = function.coefficients.value.reshape((-1, function.num_physical_dimensions))
+                function.bounding_box = np.zeros((2, coefficients.shape[-1]))
+                if self.num_parametric_dimensions == 1:
+                    function.bounding_box[0, 0] = np.min(coefficients)
+                    function.bounding_box[1, 0] = np.max(coefficients)
+                else:
+                    function.bounding_box[0, :] = np.min(coefficients, axis=0)
+                    function.bounding_box[1, :] = np.max(coefficients, axis=0)
 
-        neg = function.bounding_box[0] - point
-        pos = point - function.bounding_box[1]
-        return np.linalg.norm(np.maximum(np.maximum(neg, pos), 0))
+            neg = function.bounding_box[0] - point
+            pos = point - function.bounding_box[1]
+            return np.linalg.norm(np.maximum(np.maximum(neg, pos), 0))
+        else:
+            # Not sure how bounding box will effectively work with direction, so just compute grid search with coefficients
+            upper_bound_on_distance_from_point = np.min(point - function.coefficients.value)
+            return upper_bound_on_distance_from_point
         
 
 

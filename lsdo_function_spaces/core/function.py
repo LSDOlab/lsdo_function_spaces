@@ -37,8 +37,8 @@ class Function:
         self.num_physical_dimensions = self.coefficients.shape[-1]
 
 
-    def _compute_distance_bounds(self, point):
-        return self.space._compute_distance_bounds(point, self)
+    def _compute_distance_bounds(self, point, direction=None):
+        return self.space._compute_distance_bounds(point, self, direction=None)
 
     def copy(self) -> lfs.Function:
         '''
@@ -192,38 +192,32 @@ class Function:
         grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
         # grid_search_resolution = 100
 
+        # Generate parametric grid
+        parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
+        # Evaluate grid of points
+        grid_search_values = self.evaluate(parametric_grid_search, coefficients=self.coefficients.value)
+        points_expanded = np.repeat(points[:,np.newaxis,:], grid_search_values.shape[0], axis=1)
+        grid_search_displacements = grid_search_values - points_expanded
+        grid_search_distances = np.linalg.norm(grid_search_displacements, axis=2)
+
         # Perform a grid search
         if direction is None:
             # If no direction is provided, the projection will find the points on the function that are closest to the points to project.
             # The grid search will be used to find the initial guess for the Newton iterations
             
-            # Generate parametric grid
-            # mesh_grid_input = []
-            # for dimension_index in range(self.space.num_parametric_dimensions):
-            #     mesh_grid_input.append(np.linspace(0., 1., grid_search_resolution))
-
-            # parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
-            # for dimensions_index in range(self.space.num_parametric_dimensions):
-            #     parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
-
-            # parametric_grid_search = np.hstack(parametric_coordinates_tuple)
-            parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
-
-            # Evaluate grid of points
-            function_values = self.evaluate(parametric_grid_search, coefficients=self.coefficients.value)
-
             # Find closest point on function to each point to project
-            # closest_point_indices = np.argmin(np.linalg.norm(function_values - points, axis=1))
-            points_expanded = np.repeat(points[:,np.newaxis,:], function_values.shape[0], axis=1)
-            grid_search_distances = np.linalg.norm(points_expanded - function_values, axis=2)
+            # closest_point_indices = np.argmin(np.linalg.norm(grid_search_values - points, axis=1))
             closest_point_indices = np.argmin(grid_search_distances, axis=1)
 
-            # Use the parametric coordinate corresponding to each closest point as the initial guess for the Newton iterations
-            initial_guess = parametric_grid_search[closest_point_indices]
         else:
             # If a direction is provided, the projection will find the points on the function that are closest to the axis defined by the direction.
             # The grid search will be used to find the initial guess for the Newton iterations
-            grid_search_points = points + np.outer(np.linspace(-1., 1., grid_search_density_parameter), direction)
+            grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
+            grid_search_distances_from_axis_squared = grid_search_distances**2 - grid_search_distances_along_axis**2
+            closest_point_indices = np.argmin(grid_search_distances_from_axis_squared, axis=1)
+
+        # Use the parametric coordinate corresponding to each closest point as the initial guess for the Newton iterations
+        initial_guess = parametric_grid_search[closest_point_indices]
 
 
         # current_guess = initial_guess.copy()
@@ -331,9 +325,23 @@ class Function:
                         # NOTE on indices: i=points, j=coefficients, k=physical dimensions
 
             # Construct the gradient and hessian
-            gradient = 2 * np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
-            hessian = 2 * (np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
-                        + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
+            if direction is None:
+                gradient = 2 * np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
+                hessian = 2 * (np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
+                            + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
+            else:
+                displacement_dot_d_displacement_d_parametric = np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
+                direction_dot_displacement = np.einsum('j,ij->i', direction, displacements)
+                direction_dot_d_displacement_d_parametric = np.einsum('j,ijk->ik', direction, d_displacement_d_parametric)
+                direction_dot_d2_displacement_d_parametric2 = np.einsum('j,ijkm->ikm', direction, d2_displacement_d_parametric2)
+                gradient = 2 * (displacement_dot_d_displacement_d_parametric 
+                                - direction_dot_displacement[:, np.newaxis] * direction_dot_d_displacement_d_parametric)
+                hessian = 2 * (
+                    np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
+                    + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2)
+                    - np.einsum('ik,im->ikm', direction_dot_d_displacement_d_parametric, direction_dot_d_displacement_d_parametric)
+                    - np.einsum('i,ikm->ikm', direction_dot_displacement, direction_dot_d2_displacement_d_parametric2)
+                )
 
             # Remove dof that are on constrant boundary and want to leave (active subspace method)
             coorinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
