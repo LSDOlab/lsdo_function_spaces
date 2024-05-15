@@ -214,10 +214,15 @@ class FunctionSpace:
             print("Warning: Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
             # raise Warning("Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
 
+
         if parametric_coordinates is not None:
-            basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
-        
-        fitting_matrix = basis_matrix.T.dot(basis_matrix)
+            if hasattr(self, 'compute_fitting_map'):
+                fitting_map = self.compute_fitting_map(parametric_coordinates)
+                return fitting_map @ values
+            else:
+                basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
+                fitting_matrix = basis_matrix.T.dot(basis_matrix)
+                
         if regularization_parameter is not None:
             if sps.issparse(fitting_matrix):
                 fitting_matrix += regularization_parameter * sps.eye(fitting_matrix.shape[0]).tocsc()
@@ -275,7 +280,10 @@ class FunctionSpace:
         '''
         coefficients = self.fit(values=values, parametric_coordinates=parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders,
                                 basis_matrix=basis_matrix, regularization_parameter=regularization_parameter)
-        function = lfs.Function(space=self, coefficients=coefficients)
+        functions = []
+        
+        
+        function = lfs.FunctionSet(space=self, coefficients=coefficients)
         return function
         # raise NotImplementedError(f"Fit function method must be implemented in {type(self)} class.")
 

@@ -149,23 +149,26 @@ class FunctionSetSpace(lfs.FunctionSpace):
         for i, space in enumerate(self.spaces):
             values_per_function[i] = []
             parametric_coordinates_per_function[i] = []
-            parametric_derivative_orders_per_function[i] = []
+            parametric_derivative_orders_per_function[i] = None
+
 
         for i, parametric_coordinate in enumerate(parametric_coordinates):
             index, parametric_coordinate = parametric_coordinate
             values_per_function[index].append(values[i,:])
             parametric_coordinates_per_function[index].append(parametric_coordinate)
-            parametric_derivative_orders_per_function[index].append(parametric_derivative_orders[i])
+            if parametric_derivative_orders is not None:
+                parametric_derivative_orders_per_function[index].append(parametric_derivative_orders[i])
 
         for i, space in enumerate(self.spaces):
-            parametric_coordinates_per_function[i] = np.vstack(parametric_coordinates_per_function[i])
+            if len(values_per_function[i]) > 0:
+                parametric_coordinates_per_function[i] = np.vstack(parametric_coordinates_per_function[i])
 
         # Fit each function in the set
         coefficients = []
         for i, space in enumerate(self.spaces):
             if len(values_per_function[i]) > 0:
-                coefficients.append(space.fit(values=values_per_function[i], parametric_coordinates=parametric_coordinates[i],
-                                                parametric_derivative_orders=parametric_derivative_orders[i], 
+                coefficients.append(space.fit(values=values_per_function[i], parametric_coordinates=parametric_coordinates_per_function[i],
+                                                parametric_derivative_orders=None, 
                                                 regularization_parameter=regularization_parameter))
             else:
                 print(f"No data was provided for function {i}.")
