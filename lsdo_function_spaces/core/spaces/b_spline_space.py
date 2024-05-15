@@ -41,6 +41,9 @@ class BSplineSpace(FunctionSpace):
 
     def __post_init__(self):
         # super().__post_init__()
+        if isinstance(self.degree, int):
+            self.degree = (self.degree,)*self.num_parametric_dimensions
+
         if self.knots is None:
             # If knots are None, generate open uniform knot vectors
             self.knots = np.array([])
@@ -48,12 +51,11 @@ class BSplineSpace(FunctionSpace):
             self.knot_indices = []
             for i in range(self.num_parametric_dimensions):
                 dimension_num_knots = self.coefficients_shape[i] + self.degree[i] + 1
-                self.knot_indices.append(np.arange(dimension_num_knots))
                 num_knots += dimension_num_knots
 
-                knots_i = np.zeros((num_knots,))
+                knots_i = np.zeros((dimension_num_knots,))
                 get_open_uniform(order=self.degree[i]+1, num_coefficients=self.coefficients_shape[i], knot_vector=knots_i)
-                self.knot_indices.append(np.arange(len(self.knots), len(self.knots) + num_knots))
+                self.knot_indices.append(np.arange(len(self.knots), len(self.knots) + dimension_num_knots))
                 # self.knots.append(knots_i)
                 self.knots = np.hstack((self.knots, knots_i))
         elif self.knot_indices is None:
@@ -63,30 +65,6 @@ class BSplineSpace(FunctionSpace):
                 num_knots_i = self.coefficients_shape[i] + self.degree[i] + 1
                 self.knot_indices.append(np.arange(knot_index, knot_index + num_knots_i))
                 knot_index += num_knots_i
-
-    def _compute_distance_bounds(self, point:np.ndarray, function:Function, direction=None) -> float:
-        '''
-        Computes the distance bounds for the given point.
-        '''
-        if direction is None:
-            if not hasattr(function, 'bounding_box'):
-                coefficients = function.coefficients.value.reshape((-1, function.num_physical_dimensions))
-                function.bounding_box = np.zeros((2, coefficients.shape[-1]))
-                if self.num_parametric_dimensions == 1:
-                    function.bounding_box[0, 0] = np.min(coefficients)
-                    function.bounding_box[1, 0] = np.max(coefficients)
-                else:
-                    function.bounding_box[0, :] = np.min(coefficients, axis=0)
-                    function.bounding_box[1, :] = np.max(coefficients, axis=0)
-
-            neg = function.bounding_box[0] - point
-            pos = point - function.bounding_box[1]
-            return np.linalg.norm(np.maximum(np.maximum(neg, pos), 0))
-        else:
-            # Not sure how bounding box will effectively work with direction, so just compute grid search with coefficients
-            upper_bound_on_distance_from_point = np.min(point - function.coefficients.value)
-            return upper_bound_on_distance_from_point
-        
 
 
     def compute_basis_matrix(self, parametric_coordinates: np.ndarray, parametric_derivative_orders: np.ndarray = None,
@@ -199,6 +177,45 @@ class BSplineSpace(FunctionSpace):
             return expanded_basis.tocsc()
         else:
             return basis_matrix
+        
+
+    def _compute_distance_bounds(self, point:np.ndarray, function:Function, direction=None) -> float:
+        '''
+        Computes the distance bounds for the given point.
+        '''
+        if direction is None:
+            if not hasattr(function, 'bounding_box'):
+                coefficients = function.coefficients.value.reshape((-1, function.num_physical_dimensions))
+                function.bounding_box = np.zeros((2, coefficients.shape[-1]))
+                if self.num_parametric_dimensions == 1:
+                    function.bounding_box[0, 0] = np.min(coefficients)
+                    function.bounding_box[1, 0] = np.max(coefficients)
+                else:
+                    function.bounding_box[0, :] = np.min(coefficients, axis=0)
+                    function.bounding_box[1, :] = np.max(coefficients, axis=0)
+
+            neg = function.bounding_box[0] - point
+            pos = point - function.bounding_box[1]
+            return np.linalg.norm(np.maximum(np.maximum(neg, pos), 0))
+        else:
+            # Not sure how bounding box will effectively work with direction, so just compute grid search with coefficients
+            displacement = (function.coefficients.value - point).reshape((-1,point.shape[-1]))
+            rho = 1.e-3
+            upper_bound_on_distance_from_axis = ((1 + rho)*
+                                                 np.einsum('ij,ij->i', displacement, displacement)
+                                                 - np.dot(displacement, direction)**2)**(1/2)
+            minimum_upper_bound = np.min(upper_bound_on_distance_from_axis)
+            return minimum_upper_bound
+        
+
+    def _generate_projection_grid_search_resolution(self, grid_search_density_parameter=1):
+        '''
+        Generates the resolution of the grid search for projection.
+        '''
+        grid_search_resolution = []
+        for dimension_length in self.coefficients_shape:
+            grid_search_resolution.append(int(dimension_length*grid_search_density_parameter))
+        return tuple(grid_search_resolution)
 
 
 def test_single_surface():

@@ -214,6 +214,9 @@ class FunctionSpace:
             print("Warning: Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
             # raise Warning("Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
 
+        if len(values.shape) > 2:
+            values = values.reshape((-1, values.shape[-1]))
+
         if parametric_coordinates is not None:
             basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
         
@@ -282,6 +285,9 @@ class FunctionSpace:
     
     def _compute_distance_bounds(self, point, function):
         raise NotImplementedError(f"Compute distance bounds method must be implemented in {type(self)} class.")
+    
+    def _generate_projection_grid_search_resolution(self, grid_search_density_parameter):
+        pass    # NOTE: Don't want this to throw an error because thetr is a default is built in to the projection method.
 
 
     # NOTE: Do I want a plot function on the space? I would also have to pass in the coefficients to plot the function. What's the point?

@@ -70,7 +70,7 @@ def plot_points(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#0062
         view_up = "y"
 
     if show:
-        show_plot(plotting_elements, 'Points', axes=1, viewup=view_up, interactive=True)
+        show_plot(plotting_elements, 'Points', axes=1, interactive=True)
     return plotting_elements
 
 
@@ -130,7 +130,7 @@ def plot_curve(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#00629
     return plotting_elements
 
 
-def plot_surface(points:np.ndarray, plot_types:list=['surface'], opacity:float=1., 
+def plot_surface(points:np.ndarray, plot_types:list=['function'], opacity:float=1., 
                  color:str|np.ndarray='#00629B', color_map:str='jet', surface_texture:str="", 
                  line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
     '''
@@ -141,7 +141,7 @@ def plot_surface(points:np.ndarray, plot_types:list=['surface'], opacity:float=1
     points : np.ndarray -- shape=(num_points_u, num_points_v, num_physical_dimensions)
         The type of points to be plotted. {evaluated_points, coefficients}
     plot_types : list
-        The type of plot {surface, wireframe}
+        The type of plot {function, wireframe}
     opactity : float
         The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
     color : str = '#00629B'
@@ -184,7 +184,7 @@ def plot_surface(points:np.ndarray, plot_types:list=['surface'], opacity:float=1
         mesh.color(color)
     elif isinstance(color, np.ndarray):
         mesh.cmap(color_map, color)
-    if 'surface' in plot_types:
+    if 'function' in plot_types:
         plotting_elements.append(mesh)
     if 'wireframe' in plot_types:
         mesh = vedo.Mesh([vertices, faces]).opacity(opacity)

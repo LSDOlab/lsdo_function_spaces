@@ -29,7 +29,7 @@ def find_best_surface_chunked(chunk, functions:list[lfs.Function], options):
     results = []
     for point in chunk:
 
-        lower_bounds = {i: function._compute_distance_bounds(point) for i, function in enumerate(functions)}
+        lower_bounds = {i: function._compute_distance_bounds(point, direction=options['direction']) for i, function in enumerate(functions)}
         sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: lower_bounds[x])
 
         # project onto the first surface
@@ -44,21 +44,25 @@ def find_best_surface_chunked(chunk, functions:list[lfs.Function], options):
         else:
             function_value = function.evaluate(best_coord, coefficients=function.coefficients.value)
             displacement = (point - function_value).reshape((-1,))
-            best_error = (displacement.dot(displacement) - np.dot(displacement, direction)**2)**(1/2)
+            rho = 1.e-3
+            best_error = ((1 + rho)*displacement.dot(displacement) - np.dot(displacement, direction)**2)**(1/2)
 
         for name in sorted_surfaces:
             function = functions[name]
             bound = lower_bounds[name]
-            if bound > best_error:
-                projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
-                break
+            # TODO: TEMPORARY DISABLING THE BREAK BECAUSE I'M RUNNING INTO AN ERROR WHEN I HAVE A SPARSE SET OF COEFFICIENTS
+            # if bound > best_error:
+            #     projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
+            #     break
             parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
                                                      max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
             projections_performed += 1
             if direction is None:
                 error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
             else:
-                error = (displacement.dot(displacement) - np.dot(displacement, direction)**2)**(1/2)
+                function_value = function.evaluate(parametric_coordinate, coefficients=function.coefficients.value)
+                displacement = (point - function_value).reshape((-1,))
+                error = ((1 + rho)*displacement.dot(displacement) - np.dot(displacement, direction)**2)**(1/2)
             if error < best_error:
                 best_surface = name
                 best_coord = parametric_coordinate
@@ -178,6 +182,12 @@ class FunctionSet:
                     function_value = function_value.reshape((function_value.size,))
                 function_values = function_values.set(csdl.slice[indices], function_value)
 
+        if plot:
+            # Plot the function
+            plotting_elements = self.plot(opacity=0.8, show=False)
+            # Plot the evaluated points
+            lfs.plot_points(function_values.value, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
+
         return function_values
     
 
@@ -237,7 +247,7 @@ class FunctionSet:
         return new_function_set
 
 
-    def project(self, points:np.ndarray, num_workers:int=1, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
+    def project(self, points:np.ndarray, num_workers:int=8, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
@@ -269,6 +279,8 @@ class FunctionSet:
         
         if len(points.shape) == 1:
             points = points.reshape(1, -1)
+        else:
+            points = points.reshape((-1, points.shape[-1]))
 
         # make sure there aren't more workers than points
         num_workers = min(num_workers, points.shape[0])
@@ -289,7 +301,8 @@ class FunctionSet:
             projection_results = self.evaluate(output).value
             plotting_elements = []
             plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
-            plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
+            # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
+            plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
             self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
 
         return output
@@ -299,6 +312,28 @@ class FunctionSet:
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
                                          max_newton_iterations:int=100, newton_tolerance:float=1e-6) -> bool:
         pass
+
+
+    def set_coefficients(self, coefficients:list[csdl.Variable], function_indices:list[int]=None) -> None:
+        '''
+        Sets the coefficients of the functions in the function set with the given indices.
+
+        Parameters
+        ----------
+        coefficients : list[csdl.Variable]
+            The coefficients to set the functions to.
+        function_indices : list[int]
+            The indices of the functions to set the coefficients of. If None, all the functions are set to the coefficients.
+        '''
+        if function_indices is None:
+            function_indices = np.arange(len(self.functions))
+
+        if len(coefficients) != len(function_indices):
+            raise ValueError("The number of coefficients must match the number of functions to set. " +
+                             f"({len(coefficients)} != {len(function_indices)})")
+
+        for i, function_index in enumerate(function_indices):
+            self.functions[function_index].coefficients = coefficients[i]
 
 
     def get_function_indices(self, function_names:list[str]) -> list[int]:
@@ -378,18 +413,18 @@ class FunctionSet:
         return subset
 
 
-    def plot(self, point_types:list=['evaluated_points'], plot_types:list=['surface'],
+    def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
               opacity:float=1., color:str|lfs.FunctionSet='#00629B', color_map:str='jet', surface_texture:str="",
               line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
-        Plots the B-spline Surface.
+        Plots the function set.
 
         Parameters
         -----------
         points_type : list = ['evaluated_points']
             The type of points to be plotted. {evaluated_points, coefficients}
-        plot_types : list = ['surface']
-            The type of plot {surface, wireframe, point_cloud}
+        plot_types : list = ['function']
+            The type of plot {function, wireframe, point_cloud}
         opactity : float = 1.
             The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
         color : str|lfs.FunctionSet = '#00629B'
