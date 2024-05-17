@@ -282,10 +282,7 @@ class FunctionSpace:
         '''
         coefficients = self.fit(values=values, parametric_coordinates=parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders,
                                 basis_matrix=basis_matrix, regularization_parameter=regularization_parameter)
-        functions = []
-        
-        
-        function = lfs.FunctionSet(space=self, coefficients=coefficients)
+        function = lfs.Function(space=self, coefficients=coefficients)
         return function
         # raise NotImplementedError(f"Fit function method must be implemented in {type(self)} class.")
 
