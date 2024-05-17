@@ -5,7 +5,7 @@ import pandas as pd
 import re
 
 
-def import_file(file_name:str, parallelize:bool=True) -> lfs.Function:
+def import_file(file_name:str, parallelize:bool=True) -> lfs.FunctionSet:
     ''' Read file '''
     with open(file_name, 'r') as f:
         print('Importing OpenVSP file:', file_name)
@@ -52,7 +52,7 @@ def import_file(file_name:str, parallelize:bool=True) -> lfs.Function:
             coefficients_shape = tuple([len(knots_u)-order_u, len(knots_v)-order_v])
             knots = np.hstack((knots_u, knots_v))
             b_spline_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(order_u-1, order_v-1),
-                                              coefficients_shape=coefficients_shape + (3,))
+                                              coefficients_shape=coefficients_shape, knots=knots)
             # NOTE: # Hardcoding 3 for num_physical_dimensions because this import is hardcoded for OpenVSP anyway
             b_spline_spaces[space_name] = b_spline_space
 
@@ -81,23 +81,24 @@ def import_file(file_name:str, parallelize:bool=True) -> lfs.Function:
         for i in range(num_surf):
             b_spline_list.append(_build_b_splines(i, parsed_info_dict, point_table, b_spline_spaces, b_splines_to_spaces_dict))
 
-    b_splines = {}
-    num_parametric_dimensions = {}
-    index_to_space = {}
-    name_to_index = {}
-    coefficients = []
-    for i, b_spline in enumerate(b_spline_list):
-        b_splines[b_spline.name] = b_spline
-        num_parametric_dimensions[i] = 2
-        name_to_index[b_spline.name] = i
-        coefficients.append(b_spline.coefficients.value.reshape((b_spline.coefficients.size//3,3)))
-        index_to_space[i] = list(b_spline_spaces.keys()).index(b_splines_to_spaces_dict[b_spline.name])
-    coefficients = np.vstack(coefficients)
+    # b_splines = {}
+    # num_parametric_dimensions = {}
+    # index_to_space = {}
+    # name_to_index = {}
+    # coefficients = []
+    # for i, b_spline in enumerate(b_spline_list):
+    #     b_splines[b_spline.name] = b_spline
+    #     num_parametric_dimensions[i] = 2
+    #     name_to_index[b_spline.name] = i
+    #     coefficients.append(b_spline.coefficients.value.reshape((b_spline.coefficients.size//3,3)))
+    #     index_to_space[i] = list(b_spline_spaces.keys()).index(b_splines_to_spaces_dict[b_spline.name])
+    # coefficients = np.vstack(coefficients)
 
-    b_spline_spaces = list(b_spline_spaces.values())
-    b_spline_set_space = lfs.FunctionSetSpace(num_parametric_dimensions=num_parametric_dimensions, spaces=b_spline_spaces,
-                                              index_to_space=index_to_space, name_to_index=name_to_index)
-    b_spline_set = lfs.Function(space=b_spline_set_space, coefficients=coefficients)
+    # b_spline_spaces = list(b_spline_spaces.values())
+    # b_spline_set_space = lfs.FunctionSetSpace(num_parametric_dimensions=num_parametric_dimensions, spaces=b_spline_spaces,
+    #                                           index_to_space=index_to_space, name_to_index=name_to_index)
+    # b_spline_set = lfs.Function(space=b_spline_set_space, coefficients=coefficients)
+    b_spline_set = lfs.FunctionSet(b_spline_list, name='imported_geometry')
         
     print('Complete import')
     return b_spline_set
@@ -225,6 +226,5 @@ def _build_b_splines(i, parsed_info_dict, point_table, b_spline_spaces, b_spline
     # import csdl_alpha as csdl
     # print(csdl.manager)
     # b_spline = lfs.Function(name=b_spline_name, space=b_spline_space, coefficients=coefficients, num_physical_dimensions=num_physical_dimensions)
-    b_spline = lfs.Function(space=b_spline_space, coefficients=coefficients)
-    b_spline.name = b_spline_name
+    b_spline = lfs.Function(space=b_spline_space, coefficients=coefficients, name=b_spline_name)
     return b_spline

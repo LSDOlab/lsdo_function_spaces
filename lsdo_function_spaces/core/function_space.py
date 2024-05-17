@@ -42,7 +42,7 @@ class FunctionSpace:
         np.ndarray -- shape=(num_points, num_parametric_dimensions)
             The parametric grid.
         '''
-        if len(grid_resolution) == 1 or isinstance(grid_resolution, int):
+        if isinstance(grid_resolution, int) or len(grid_resolution) == 1:
             grid_resolution = (grid_resolution,)*self.num_parametric_dimensions
 
         mesh_grid_input = []
@@ -183,7 +183,7 @@ class FunctionSpace:
 
 
     
-    def fit(self, values:np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
+    def fit(self, values:csdl.Variable|np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
             basis_matrix:sps.csc_matrix|np.ndarray=None, regularization_parameter:float=None) -> csdl.Variable:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
@@ -192,10 +192,10 @@ class FunctionSpace:
 
         Parameters
         ----------
+        values : csdl.Variable|np.ndarray -- shape=(num_points,num_physical_dimensions)
+            The values of the data.
         parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
             The parametric coordinates of the data.
-        values : np.ndarray -- shape=(num_points,num_physical_dimensions)
-            The values of the data.
         parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
             The derivative orders to fit.
         basis_matrix : sps.csc_matrix|np.ndarray = None -- shape=(num_points, num_coefficients)
@@ -214,10 +214,17 @@ class FunctionSpace:
             print("Warning: Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
             # raise Warning("Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
 
+        if len(values.shape) > 2:
+            values = values.reshape((-1, values.shape[-1]))
+
         if parametric_coordinates is not None:
-            basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
-        
-        fitting_matrix = basis_matrix.T.dot(basis_matrix)
+            if hasattr(self, 'compute_fitting_map'):
+                fitting_map = self.compute_fitting_map(parametric_coordinates)
+                return fitting_map @ values
+            else:
+                basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
+                fitting_matrix = basis_matrix.T.dot(basis_matrix)
+                
         if regularization_parameter is not None:
             if sps.issparse(fitting_matrix):
                 fitting_matrix += regularization_parameter * sps.eye(fitting_matrix.shape[0]).tocsc()
@@ -275,13 +282,19 @@ class FunctionSpace:
         '''
         coefficients = self.fit(values=values, parametric_coordinates=parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders,
                                 basis_matrix=basis_matrix, regularization_parameter=regularization_parameter)
-        function = lfs.Function(space=self, coefficients=coefficients)
+        functions = []
+        
+        
+        function = lfs.FunctionSet(space=self, coefficients=coefficients)
         return function
         # raise NotImplementedError(f"Fit function method must be implemented in {type(self)} class.")
 
     
-    def _compute_distance_bounds(self):
+    def _compute_distance_bounds(self, point, function):
         raise NotImplementedError(f"Compute distance bounds method must be implemented in {type(self)} class.")
+    
+    def _generate_projection_grid_search_resolution(self, grid_search_density_parameter):
+        pass    # NOTE: Don't want this to throw an error because thetr is a default is built in to the projection method.
 
 
     # NOTE: Do I want a plot function on the space? I would also have to pass in the coefficients to plot the function. What's the point?

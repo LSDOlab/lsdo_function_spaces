@@ -23,14 +23,28 @@ class Function:
         The function space in which the function resides.
     coefficients : csdl.Variable -- shape=coefficients_shape
         The coefficients of the function.
+    name : str = None
+        If applicable, the name of the function.
     '''
     space: lfs.FunctionSpace
     coefficients: csdl.Variable
+    name : str = None
 
     def __post_init__(self):
         if isinstance(self.coefficients, np.ndarray):
             self.coefficients = csdl.Variable(value=self.coefficients)
+
         self.num_physical_dimensions = self.coefficients.shape[-1]
+
+
+    def _compute_distance_bounds(self, point, direction=None):
+        return self.space._compute_distance_bounds(point, self, direction=direction)
+
+    def copy(self) -> lfs.Function:
+        '''
+        Returns a copy of the function.
+        '''
+        return lfs.Function(space=self.space, coefficients=self.coefficients, name=self.name)
 
 
     def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
@@ -59,7 +73,7 @@ class Function:
             coefficients = self.coefficients
 
         basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
-        # values = basis_matrix @ coefficients
+        # # values = basis_matrix @ coefficients
         if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
             coefficients_reshaped = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
             # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
@@ -67,11 +81,27 @@ class Function:
             for i in range(coefficients_reshaped.shape[1]):
                 coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
                 values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
-            # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
-        elif isinstance(coefficients, csdl.Variable):
-            values = csdl.matvec(basis_matrix, coefficients)
         else:
-            values = basis_matrix.dot(coefficients.reshape((basis_matrix.shape[1], -1)))
+            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], -1))
+
+        if parametric_coordinates.shape[0] == 1 or len(parametric_coordinates.shape) == 1:
+            values = values[0]  # Get rid of the extra dimension if only one point is evaluated
+        if values.shape[-1] == 1:
+            values = values.flatten()   # Get rid of the extra dimension if only one physical dimension is evaluated
+        
+            # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
+        # elif isinstance(coefficients, csdl.Variable):
+        #     values = csdl.matvec(basis_matrix, coefficients)
+        # else:
+        #     values = basis_matrix.dot(coefficients.reshape((basis_matrix.shape[1], -1)))
+
+        # values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], -1))
+
+        if plot:
+            # Plot the function
+            plotting_elements = self.plot(opacity=0.8, show=False)
+            # Plot the evaluated points
+            lfs.plot_points(values.value, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
 
         return values
     
@@ -103,11 +133,6 @@ class Function:
             The refitted function with the new function space and new coefficients.
         '''
 
-        '''
-        NOTE: TODO: Look at error in L2 sense and think about whether this actually minimizes the error!!
-        Additional NOTE: When the order changes, the ideal parametric coordinate corresponding to a value seems like it might change.
-        -- To clarify: A point that is at u=0.1 in one function space may actually ideally be at u=0.15 or whatever in another function space.
-        '''
         if parametric_coordinates is None and grid_resolution is None:
             # raise ValueError("Either grid resolution or parametric coordinates must be provided.")
             grid_resolution = (100,)*self.space.num_parametric_dimensions
@@ -175,40 +200,41 @@ class Function:
         '''
         num_physical_dimensions = points.shape[-1]
 
-        grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
+        points = points.reshape((-1, num_physical_dimensions))
+
+        # grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
+        grid_search_resolution = self.space._generate_projection_grid_search_resolution(grid_search_density_parameter)
+        if grid_search_resolution is None:
+            grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
         # grid_search_resolution = 100
+
+        # Generate parametric grid
+        parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
+        # Evaluate grid of points
+        grid_search_values = self.evaluate(parametric_grid_search, coefficients=self.coefficients.value)
+        points_expanded = np.repeat(points[:,np.newaxis,:], grid_search_values.shape[0], axis=1)
+        grid_search_displacements = grid_search_values - points_expanded
+        grid_search_distances = np.linalg.norm(grid_search_displacements, axis=2)
 
         # Perform a grid search
         if direction is None:
             # If no direction is provided, the projection will find the points on the function that are closest to the points to project.
             # The grid search will be used to find the initial guess for the Newton iterations
             
-            # Generate parametric grid
-            mesh_grid_input = []
-            for dimension_index in range(self.space.num_parametric_dimensions):
-                mesh_grid_input.append(np.linspace(0., 1., grid_search_resolution))
-
-            parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
-            for dimensions_index in range(self.space.num_parametric_dimensions):
-                parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
-
-            parametric_grid_search = np.hstack(parametric_coordinates_tuple)
-
-            # Evaluate grid of points
-            function_values = self.evaluate(parametric_grid_search).value
-
             # Find closest point on function to each point to project
-            # closest_point_indices = np.argmin(np.linalg.norm(function_values - points, axis=1))
-            points_expanded = np.repeat(points[:,np.newaxis,:], function_values.shape[0], axis=1)
-            grid_search_distances = np.linalg.norm(points_expanded - function_values, axis=2)
+            # closest_point_indices = np.argmin(np.linalg.norm(grid_search_values - points, axis=1))
             closest_point_indices = np.argmin(grid_search_distances, axis=1)
 
-            # Use the parametric coordinate corresponding to each closest point as the initial guess for the Newton iterations
-            initial_guess = parametric_grid_search[closest_point_indices]
         else:
             # If a direction is provided, the projection will find the points on the function that are closest to the axis defined by the direction.
             # The grid search will be used to find the initial guess for the Newton iterations
-            grid_search_points = points + np.outer(np.linspace(-1., 1., grid_search_density_parameter), direction)
+            rho = 1e-3
+            grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
+            grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
+            closest_point_indices = np.argmin(grid_search_distances_from_axis_squared, axis=1)
+
+        # Use the parametric coordinate corresponding to each closest point as the initial guess for the Newton iterations
+        initial_guess = parametric_grid_search[closest_point_indices]
 
 
         # current_guess = initial_guess.copy()
@@ -282,7 +308,7 @@ class Function:
         points_left_to_converge = np.arange(points.shape[0])
         for j in range(max_newton_iterations):
             # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
-            function_values = self.evaluate(current_guess[points_left_to_converge]).value
+            function_values = self.evaluate(current_guess[points_left_to_converge], coefficients=self.coefficients.value)
             displacements = (points[points_left_to_converge] - function_values).reshape(points_left_to_converge.shape[0], num_physical_dimensions)
             
             d_displacement_d_parametric = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, self.space.num_parametric_dimensions))
@@ -316,9 +342,23 @@ class Function:
                         # NOTE on indices: i=points, j=coefficients, k=physical dimensions
 
             # Construct the gradient and hessian
-            gradient = 2 * np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
-            hessian = 2 * (np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
-                        + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
+            if direction is None:
+                gradient = 2 * np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
+                hessian = 2 * (np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
+                            + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
+            else:
+                displacement_dot_d_displacement_d_parametric = np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
+                direction_dot_displacement = np.einsum('j,ij->i', direction, displacements)
+                direction_dot_d_displacement_d_parametric = np.einsum('j,ijk->ik', direction, d_displacement_d_parametric)
+                direction_dot_d2_displacement_d_parametric2 = np.einsum('j,ijkm->ikm', direction, d2_displacement_d_parametric2)
+                gradient = 2 * ((1 + rho)*displacement_dot_d_displacement_d_parametric 
+                                - direction_dot_displacement[:, np.newaxis] * direction_dot_d_displacement_d_parametric)
+                hessian = 2 * ( (1 + rho)*(
+                    np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
+                    + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
+                    - np.einsum('ik,im->ikm', direction_dot_d_displacement_d_parametric, direction_dot_d_displacement_d_parametric)
+                    - np.einsum('i,ikm->ikm', direction_dot_displacement, direction_dot_d2_displacement_d_parametric2)
+                )
 
             # Remove dof that are on constrant boundary and want to leave (active subspace method)
             coorinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
@@ -363,11 +403,12 @@ class Function:
             # If any of the coordinates are outside the bounds, set them to the bounds
             current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
 
+
         if plot:
-            function_values = self.evaluate(current_guess).value
+            projection_results = self.evaluate(current_guess).value
             plotting_elements = []
             plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
-            plotting_elements.append(lfs.plot_points(function_values, color='#F5F0E6', size=10, show=False))
+            plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
             self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
 
         return current_guess
@@ -380,7 +421,7 @@ class Function:
         pass
 
 
-    def plot(self, point_types:list=['evaluated_points'], plot_types:list=['surface'],
+    def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
               opacity:float=1., color:str|Function='#00629B', color_map:str='jet', surface_texture:str="",
               line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
@@ -390,8 +431,8 @@ class Function:
         -----------
         points_type : list = ['evaluated_points']
             The type of points to be plotted. {evaluated_points, coefficients}
-        plot_types : list = ['surface']
-            The type of plot {surface, wireframe, point_cloud}
+        plot_types : list = ['function']
+            The type of plot {function, wireframe, point_cloud}
         opactity : float = 1.
             The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
         color : str = '#00629B'
@@ -411,42 +452,78 @@ class Function:
         plotting_elements : list
             The Vedo plotting elements that were plotted.
         '''
+        if self.coefficients is None:
+            raise ValueError("The coefficients of the function are not defined.")
+        
+        plotting_elements = additional_plotting_elements.copy()
         for point_type in point_types:
             if point_type not in ['evaluated_points', 'coefficients']:
-                raise ValueError("Invalid point type. Must be 'evaluated_points' or 'coefficients'.")
-            
-            if point_type == 'coefficients' and self.coefficients is None:
-                raise ValueError("The coefficients of the function are not defined.")
+                raise ValueError(f"Invalid point type. Must be 'evaluated_points' or 'coefficients'. Got {point_type}.")
             
             if self.space.num_parametric_dimensions == 1:
                 # NOTE: Curve plotting not currently implemented for points in 3D space because I don't have a num_physical_dimensions attribute.
-                return self.plot_curve(point_type=point_type, opacity=opacity, color=color, color_map=color_map,
-                                       line_width=line_width, additional_plotting_elements=additional_plotting_elements, show=show)
+                plotting_elements = self.plot_curve(point_type=point_type, opacity=opacity, color=color, color_map=color_map,
+                                       line_width=line_width, additional_plotting_elements=plotting_elements, show=show)
             
             elif self.space.num_parametric_dimensions == 2:
-                return self.plot_surface(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
-                                        surface_texture=surface_texture, line_width=line_width, additional_plotting_elements=additional_plotting_elements, show=show)
+                plotting_elements = self.plot_surface(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+                                        surface_texture=surface_texture, line_width=line_width,
+                                        additional_plotting_elements=plotting_elements, show=show)
             elif self.space.num_parametric_dimensions == 3:
-                return self.plot_volume(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
-                                        surface_texture=surface_texture, line_width=line_width, additional_plotting_elements=additional_plotting_elements, show=show)
-            
-            elif isinstance(self.space, lfs.FunctionSetSpace):
-                # Then there must be a discrete index so loop over subfunctions and plot them
-                plotting_elements = []
-                for index, subfunction_space_index in self.space.index_to_space.items():
-                    subfunction_space = self.space.spaces[subfunction_space_index]
-                    subfunction = Function(space=subfunction_space, coefficients=self.coefficients[self.space.index_to_coefficient_indices[index]])
-                    plotting_elements += subfunction.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
-                                                          surface_texture=surface_texture, line_width=line_width, 
-                                                          additional_plotting_elements=additional_plotting_elements, show=False)
-                if show:
-                    lfs.show_plot(plotting_elements=plotting_elements, title='B-Spline Set Plot')
-                return plotting_elements
+                plotting_elements = self.plot_volume(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+                                        surface_texture=surface_texture, line_width=line_width,
+                                        additional_plotting_elements=plotting_elements, show=show)
+            else:
+                raise ValueError("The number of parametric dimensions must be 1, 2, or 3 in order to plot.")
+            # elif isinstance(self.space, lfs.FunctionSetSpace):
+            #     # Then there must be a discrete index so loop over subfunctions and plot them
+            #     plotting_elements = []
+            #     for index, subfunction_space_index in self.space.index_to_space.items():
+            #         subfunction_space = self.space.spaces[subfunction_space_index]
+            #         subfunction = Function(space=subfunction_space, coefficients=self.coefficients[self.space.index_to_coefficient_indices[index]])
+            #         plotting_elements += subfunction.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+            #                                               surface_texture=surface_texture, line_width=line_width, 
+            #                                               additional_plotting_elements=additional_plotting_elements, show=False)
+            #     if show:
+            #         lfs.show_plot(plotting_elements=plotting_elements, title='B-Spline Set Plot')
+            #     return plotting_elements
+
+        return plotting_elements
+
+
+    def plot_points(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet', 
+                    size:float=10., additional_plotting_elements:list=[], show:bool=True) -> list:
+        '''
+        Plots the points of the function.
+
+        Parameters
+        -----------
+        points_type : str = 'evaluated_points'
+            The type of points to be plotted. {evaluated_points, coefficients}
+        opactity : float = 1.
+            The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
+        color : str = '#00629B'
+            The 6 digit color code to plot the points as. If a function is provided, the function will be used to color the points.
+        color_map : str = 'jet'
+            The color map to use if the color is a function.
+        size : float = 10.
+            The size of the points.
+        additional_plotting_elemets : list = []
+            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+        show : bool = True
+            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+
+        Returns
+        -------
+        plotting_elements : list
+            The Vedo plotting elements that were plotted.
+        '''
+        import lsdo_function_spaces.utils.plotting_functions as pf
 
 
 
 
-    def plot_curve(self, point_type:str='evaluated_points', opacity:float=1., color:str|Function='#00629B', color_map:str='jet',
+    def plot_curve(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet',
                    line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
         '''
         Plots the function as a curve. NOTE: This should only be called if the function is a curve!
@@ -475,11 +552,15 @@ class Function:
         if self.space.num_parametric_dimensions != 1:
             raise ValueError("This function is not a curve and cannot be plotted as one.")
         
+        plotting_elements = additional_plotting_elements.copy()
+        
         # region Generate the points to plot
         if point_type == 'evaluated_points':
             num_points = 100
             parametric_coordinates = np.linspace(0., 1., num_points).reshape((-1,1))
             function_values = self.evaluate(parametric_coordinates).value
+            if len(function_values.shape) == 1:
+                function_values = function_values.reshape((-1,1))   # Here we want the physical dimension separate for vedo so put it back
 
             # scale u axis to be more visually clear based on scaling of parameter
             u_axis_scaling = np.max(function_values) - np.min(function_values)
@@ -517,11 +598,11 @@ class Function:
 
         # Call general plot curve function to plot the points with the colors
         plotting_elements = pf.plot_curve(points=points, opacity=opacity, color=color, color_map=color_map, line_width=line_width, 
-                                          additional_plotting_elements=additional_plotting_elements, show=show)
+                                          additional_plotting_elements=plotting_elements, show=show)
         return plotting_elements
     
 
-    def plot_surface(self, point_type:str='evaluated_points', plot_types:list=['surface'], opacity:float=1., color:str|Function='#00629B',
+    def plot_surface(self, point_type:str='evaluated_points', plot_types:list=['function'], opacity:float=1., color:str|lfs.Function='#00629B',
                         color_map:str='jet', surface_texture:str="", line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
         '''
         Plots the function as a surface. NOTE: This should only be called if the function is a surface!
@@ -530,8 +611,8 @@ class Function:
         -----------
         points_type : str = 'evaluated_points'
             The type of points to be plotted. {evaluated_points, coefficients}
-        plot_types : list = ['surface']
-            The type of plot {surface, wireframe, point_cloud}
+        plot_types : list = ['function']
+            The type of plot {function, wireframe, point_cloud}
         opactity : float = 1.
             The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
         color : str = '#00629B'
@@ -556,7 +637,9 @@ class Function:
         import lsdo_function_spaces.utils.plotting_functions as pf
         if self.space.num_parametric_dimensions != 2:
             raise ValueError("This function is not a surface and cannot be plotted as one.")
-        
+
+        plotting_elements = additional_plotting_elements.copy()
+
         # region Generate the points to plot
         if point_type == 'evaluated_points':
             num_points = 25
@@ -602,13 +685,26 @@ class Function:
         # endregion Generate the points to plot
 
         # Call general plot surface function to plot the points with the colors
-        plotting_elements = pf.plot_surface(points=points, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map, 
-                                            surface_texture=surface_texture, line_width=line_width, 
-                                            additional_plotting_elements=additional_plotting_elements, show=show)
+        for plot_type in plot_types:
+            if plot_type not in ['function', 'wireframe', 'point_cloud']:
+                raise ValueError("Invalid plot type. Must be 'function', 'wireframe', or 'point_cloud'.")
+            if plot_type == 'point_cloud':
+                plotting_elements = pf.plot_points(points=points, opacity=opacity, color=color, color_map=color_map, size=10., 
+                                                   additional_plotting_elements=plotting_elements, show=False)
+            elif plot_type in ['function', 'wireframe']:
+                plotting_elements = pf.plot_surface(points=points, plot_types=[plot_type], opacity=opacity, color=color, color_map=color_map, 
+                                                    surface_texture=surface_texture, line_width=line_width, 
+                                                    additional_plotting_elements=plotting_elements, show=False)
+        if show:
+            if self.name is not None:
+                pf.show_plot(plotting_elements, title=self.name, axes=1, interactive=True)
+            else:
+                pf.show_plot(plotting_elements, title="Surface", axes=1, interactive=True)
+
         return plotting_elements
     
 
-    def plot_volume(self, point_type:str='evaluated_points', plot_types:list=['volume'], opacity:float=1., color:str|Function='#00629B',
+    def plot_volume(self, point_type:str='evaluated_points', plot_types:list=['function'], opacity:float=1., color:str|lfs.Function='#00629B',
                         color_map:str='jet', surface_texture:str="", line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
         '''
         Plots the function as a volume. NOTE: This should only be called if the function is a volume!
@@ -617,8 +713,8 @@ class Function:
         -----------
         points_type : str = 'evaluated_points'
             The type of points to be plotted. {evaluated_points, coefficients}
-        plot_types : list = ['volume']
-            The type of plot {volume}
+        plot_types : list = ['function']
+            The type of plot {function}
         opactity : float = 1.
             The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
         color : str = '#00629B'
@@ -651,8 +747,8 @@ class Function:
             # Generate meshgrid of parametric coordinates
             linspace_dimension = np.linspace(0., 1., num_points)
             linspace_meshgrid = np.meshgrid(linspace_dimension, linspace_dimension)
-            linspace_dimension1 = linspace_meshgrid[0].reshape((-1,1))
-            linspace_dimension2 = linspace_meshgrid[1].reshape((-1,1))
+            linspace_dimension1 = linspace_meshgrid[1].reshape((-1,1))
+            linspace_dimension2 = linspace_meshgrid[0].reshape((-1,1))
             zeros_dimension = np.zeros((num_points**2,)).reshape((-1,1))
             ones_dimension = np.ones((num_points**2,)).reshape((-1,1))
 
@@ -666,7 +762,7 @@ class Function:
             
             points = []
             for parametric_coordinate_set in parametric_coordinates:
-                points.append(self.evaluate(parametric_coordinate_set).value)
+                points.append(self.evaluate(parametric_coordinate_set).value.reshape((num_points,num_points,-1)))
 
             plotting_colors = []
             if isinstance(color, Function):
@@ -700,15 +796,27 @@ class Function:
 
         # Call general plot volume function to plot the points with the colors
         plotting_elements = additional_plotting_elements.copy()
-        for i in range(6):
-            if isinstance(color, list):
-                plotting_color = color[i]
-            else:
-                plotting_color = color
-            plotting_elements.append(
-                pf.plot_surface(points=points[i], plot_types=plot_types, opacity=opacity, color=plotting_color, color_map=color_map,
-                                surface_texture=surface_texture, line_width=line_width, show=False)
-            )
+        for plot_type in plot_types:
+            if plot_type not in ['function', 'wireframe', 'point_cloud']:
+                raise ValueError("Invalid plot type. Must be 'function', 'wireframe', or 'point_cloud'.")
+
+            for i in range(6):
+                if isinstance(color, list):
+                    plotting_color = color[i]
+                else:
+                    plotting_color = color
+
+                if plot_type == 'point_cloud':
+                    plotting_elements = pf.plot_points(points=points[i].reshape((-1,self.coefficients.shape[-1])), color=plotting_color, size=10., 
+                                                       additional_plotting_elements=plotting_elements, show=False)
+                elif plot_type in ['function', 'wireframe']:
+                    plotting_elements = pf.plot_surface(points=points[i], plot_types=[plot_type], opacity=opacity, color=plotting_color,
+                                                        color_map=color_map, surface_texture=surface_texture, line_width=line_width,
+                                                         additional_plotting_elements=plotting_elements, show=False)
+
         if show:
-            pf.show_plot(plotting_elements, title="Volume", axes=1, interactive=True)
+            if self.name is not None:
+                pf.show_plot(plotting_elements, title=self.name, axes=1, interactive=True)
+            else:
+                pf.show_plot(plotting_elements, title="Volume", axes=1, interactive=True)
         return plotting_elements

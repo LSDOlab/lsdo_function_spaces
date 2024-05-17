@@ -10,7 +10,22 @@ file_name = 'rectangular_wing.stp'
 wing = lfs.import_file(file_path + file_name, parallelize=False)
 
 # Plot the wing
-wing.plot()
+# wing.plot()
 
-wing.project(np.array([0., 0., 0.]))
+# left_wing = wing.create_subset(function_search_names=[', 0'])
+# left_wing.plot()
+
+# left_wing.functions[3].coefficients += 1.
+# left_wing.plot()
+
+plotting_elements = wing.plot(show=False)
+wing.plot(point_types=['coefficients'], plot_types=['point_cloud'], color='#C69214', additional_plotting_elements=plotting_elements)
+
+
+# wing.project(np.array([0., 0., 0.]))
+new_function_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,3), coefficients_shape=(10,30))
+new_function_spaces = [new_function_space]*len(wing.functions)
+new_wing = wing.refit(new_function_spaces=new_function_spaces, grid_resolution=(30,100))
+plotting_elements = new_wing.plot(show=False)
+new_wing.plot(point_types=['coefficients'], plot_types=['point_cloud'], color='#C69214', additional_plotting_elements=plotting_elements)
 print('hi')
