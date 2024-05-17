@@ -6,6 +6,24 @@ import re
 
 
 def import_file(file_name:str, parallelize:bool=True) -> lfs.FunctionSet:
+    '''
+    Imports a step file that contains only B_SPLINE_SURFACE_WITH_KNOTS and creates a B-Spline Set from the surfaces.
+
+    NOTE: This is intended to import step files that were exported from OpenVSP, which only contain B-Spline surfaces.
+
+    Parameters
+    ----------
+    file_name : str
+        The name of the file to import.
+    parallelize : bool = True
+        Whether to parallelize the import process.
+
+    Returns
+    -------
+    b_spline_set : lfs.FunctionSet
+        The B-Spline Set of the imported surfaces.
+    '''
+
     ''' Read file '''
     with open(file_name, 'r') as f:
         print('Importing OpenVSP file:', file_name)
