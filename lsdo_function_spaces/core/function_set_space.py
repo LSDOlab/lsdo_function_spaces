@@ -2,7 +2,7 @@ import numpy as np
 import scipy.sparse as sps
 import lsdo_function_spaces as lfs
 import csdl_alpha as csdl
-
+from typing import Union
 from dataclasses import dataclass
 
 @dataclass
@@ -99,8 +99,8 @@ class FunctionSetSpace(lfs.FunctionSpace):
         return basis_matrix
     
 
-    def fit(self, values:csdl.Variable|np.ndarray, parametric_coordinates:list[tuple[int,np.ndarray]]=None,
-            parametric_derivative_orders:list[tuple]=None, basis_matrix:sps.csc_matrix|np.ndarray=None,
+    def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:list[tuple[int,np.ndarray]]=None,
+            parametric_derivative_orders:list[tuple]=None, basis_matrix:Union[sps.csc_matrix, np.ndarray]=None,
             regularization_parameter:float=None) -> list[csdl.Variable]:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
@@ -182,8 +182,8 @@ class FunctionSetSpace(lfs.FunctionSpace):
         return coefficients
     
 
-    def fit_function_set(self, values:csdl.Variable|np.ndarray, parametric_coordinates:list[tuple[int,np.ndarray]]=None,
-            parametric_derivative_orders:list[tuple]=None, basis_matrix:sps.csc_matrix|np.ndarray=None,
+    def fit_function_set(self, values:Union[csdl.Variable,np.ndarray], parametric_coordinates:list[tuple[int,np.ndarray]]=None,
+            parametric_derivative_orders:list[tuple]=None, basis_matrix:Union[sps.csc_matrix, np.ndarray]=None,
             regularization_parameter:float=None) -> list[csdl.Variable]:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the

@@ -4,6 +4,7 @@ import numpy as np
 import scipy.sparse as sps
 import scipy.sparse.linalg as spsl
 import lsdo_function_spaces as lfs
+from typing import Union
 
 '''
 NOTE: To implement a function space (for instance, B-splines), all that must be implemented is the evaluation of the basis functions 
@@ -183,8 +184,8 @@ class FunctionSpace:
 
 
     
-    def fit(self, values:csdl.Variable|np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
-            basis_matrix:sps.csc_matrix|np.ndarray=None, regularization_parameter:float=None) -> csdl.Variable:
+    def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
+            basis_matrix:Union[sps.csc_matrix, np.ndarray]=None, regularization_parameter:float=None) -> csdl.Variable:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
         parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
@@ -257,7 +258,7 @@ class FunctionSpace:
         # raise NotImplementedError(f"Fit method must be implemented in {type(self)} class.")
 
     def fit_function(self, values:np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
-            basis_matrix:sps.csc_matrix|np.ndarray=None, regularization_parameter:float=None) -> csdl.Variable:
+            basis_matrix:Union[sps.csc_matrix, np.ndarray]=None, regularization_parameter:float=None) -> csdl.Variable:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
         parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix

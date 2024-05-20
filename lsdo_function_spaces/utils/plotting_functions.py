@@ -2,7 +2,7 @@
 
 import vedo
 import numpy as np
-
+from typing import Union
 
 def show_plot(plotting_elements:list, title:str, axes:bool=True, view_up:str="z", interactive:bool=True):
     '''
@@ -25,7 +25,7 @@ def show_plot(plotting_elements:list, title:str, axes:bool=True, view_up:str="z"
     plotter.show(plotting_elements, title, axes=axes, viewup=view_up, interactive=interactive)
 
 
-def plot_points(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#00629B', color_map:str='jet', size=6.,
+def plot_points(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray]='#00629B', color_map:str='jet', size=6.,
                 additional_plotting_elements:list=[], show:bool=True):
     '''
     Plots a point cloud.
@@ -75,7 +75,7 @@ def plot_points(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#0062
 
 
 
-def plot_curve(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#00629B', color_map:str='jet', line_width:float=3.,
+def plot_curve(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray]='#00629B', color_map:str='jet', line_width:float=3.,
               additional_plotting_elements:list=[], show:bool=True):
     '''
     Plots the B-spline Surface.
@@ -131,7 +131,7 @@ def plot_curve(points:np.ndarray, opacity:float=1., color:str|np.ndarray='#00629
 
 
 def plot_surface(points:np.ndarray, plot_types:list=['function'], opacity:float=1., 
-                 color:str|np.ndarray='#00629B', color_map:str='jet', surface_texture:str="", 
+                 color:Union[str, np.ndarray]='#00629B', color_map:str='jet', surface_texture:str="", 
                  line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
     '''
     Plots the B-spline Surface.
