@@ -345,19 +345,20 @@ class FunctionSet:
 
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
                                          max_newton_iterations:int=100, newton_tolerance:float=1e-6) -> bool:
-        name_space = f'{self.name}_{self.coefficients.value}'
 
+        name_space = ''
         for function in self.functions:
             function_space = function.space
 
-            order = function_space.order
+            order = function_space.degree
             coeff_shape = function_space.coefficients_shape
             knot_vectors_norm = round(np.linalg.norm(function_space.knots), 2)
 
             # if f'{target}_{str(order)}_{str(coeff_shape)}_{str(knot_vectors_norm)}' in name_space:
             #     pass
             # else:
-            name_space += f'_{str(order)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
+            function_coeffs = function.coefficients.value
+            name_space += f'_{function_coeffs}_{str(order)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
         
         long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}'
 
