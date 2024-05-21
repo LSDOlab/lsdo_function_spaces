@@ -17,7 +17,7 @@ import random
 import lsdo_function_spaces as lfs
 
 
-def find_best_surface_chunked(chunk, functions:list[lfs.Function], options):
+def find_best_surface_chunked(chunk, functions:list[lfs.Function]=None, options=None):
     # New approach - 2 stages: 
     # 1. Find lower bound of error for each surface via very fast method (eg. bounding box)
     # 2. Project point onto surfaces in order of increasing lower bound of error; 
@@ -25,17 +25,29 @@ def find_best_surface_chunked(chunk, functions:list[lfs.Function], options):
     #
     # Each function space should have a method to compute the lower bound of error
     # eg, for b-splines, this could be the bounding box of the control points
-
     sorting_time = 0
     projection_time = 0
     projections_skipped = 0
     projections_performed = 0
-
     results = []
+    
+    if functions is None:
+        functions = global_functions
+    if options is None:
+        options = global_options
+
+    direction = options['direction']
+
     for point in chunk:
 
-        lower_bounds = {i: function._compute_distance_bounds(point, direction=options['direction']) for i, function in enumerate(functions)}
-        sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: lower_bounds[x])
+        if direction is None:
+            lower_bounds = {i: function._compute_distance_bounds(point) for i, function in enumerate(functions)}
+            sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: lower_bounds[x])
+
+        else:
+            lower_bounds = {i: function._compute_distance_bounds(point, direction=direction) for i, function in enumerate(functions)}
+            distance_bounds = {i: function._compute_distance_bounds(point) for i, function in enumerate(functions)}
+            sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: (lower_bounds[x], distance_bounds[x]))
 
         # project onto the first surface
         best_surface = sorted_surfaces[0]
@@ -49,30 +61,49 @@ def find_best_surface_chunked(chunk, functions:list[lfs.Function], options):
         else:
             function_value = function.evaluate(best_coord, coefficients=function.coefficients.value)
             displacement = (point - function_value).reshape((-1,))
-            rho = 1.e-3
-            best_error = ((1 + rho)*displacement.dot(displacement) - np.dot(displacement, direction)**2)**(1/2)
+            best_error = (np.dot(displacement, direction), np.linalg.norm(displacement)) # (directed distance, total distance)
 
         for name in sorted_surfaces:
             function = functions[name]
             bound = lower_bounds[name]
             # TODO: TEMPORARY DISABLING THE BREAK BECAUSE I'M RUNNING INTO AN ERROR WHEN I HAVE A SPARSE SET OF COEFFICIENTS
-            # if bound > best_error:
-            #     projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
-            #     break
+            if direction is None:
+                if bound > best_error:
+                    projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
+                    break
+            else:
+                if bound > best_error[1]:
+                    projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
+                    break
+                if bound*(1 + 1e-6) > best_error[0]: # TODO: make the 1e-6 a parameter
+                    if distance_bounds[name] > best_error[1]:
+                        projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
+                        break
             parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
                                                      max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
             projections_performed += 1
             if direction is None:
                 error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
+                if error < best_error:
+                    best_surface = name
+                    best_coord = parametric_coordinate
+                    best_error = error
             else:
                 function_value = function.evaluate(parametric_coordinate, coefficients=function.coefficients.value)
                 displacement = (point - function_value).reshape((-1,))
-                error = ((1 + rho)*displacement.dot(displacement) - np.dot(displacement, direction)**2)**(1/2)
-            if error < best_error:
-                best_surface = name
-                best_coord = parametric_coordinate
-                best_error = error
+                error = (np.dot(displacement, direction), np.linalg.norm(displacement))
+                if error[0] < best_error[0]:
+                    best_surface = name
+                    best_coord = parametric_coordinate
+                    best_error = error
+                elif error[0] < best_error[0]*(1 + 1e-6) and error[1] < best_error[1]:
+                    best_surface = name
+                    best_coord = parametric_coordinate
+                    best_error = error 
         results.append((best_surface, best_coord))
+
+    # print(f"Projections performed: {projections_performed}")
+    # print(f"Projections skipped: {projections_skipped}")
 
     return results
 
@@ -299,10 +330,13 @@ class FunctionSet:
         options = {'direction': direction, 'grid_search_density_parameter': grid_search_density_parameter,
                      'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance}
         
+        if isinstance(points, csdl.Variable):
+            points = points.value
+
         if len(points.shape) == 1:
             points = points.reshape(1, -1)
         else:
-            points = points.reshape((-1, points.shape[-1]))
+            points = points.reshape(-1, points.shape[-1])
 
         # make sure there aren't more workers than points
         num_workers = min(num_workers, points.shape[0])
@@ -310,8 +344,17 @@ class FunctionSet:
         # Divide the points into chunks and run in parallel
         if num_workers > 1:
             chunks = np.array_split(points, num_workers)
+
+            global global_functions
+            global_functions = self.functions
+            global global_options
+            global_options = options
+
+            # pool = Pool(num_workers)
+            # results = pool.map(find_best_surface_chunked, chunks)
+
             with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-                results = executor.map(find_best_surface_chunked, chunks, [self.functions]*len(chunks), [options]*len(chunks))
+                results = executor.map(find_best_surface_chunked, chunks)
 
             parametric_coordinates = []
             for result in results:

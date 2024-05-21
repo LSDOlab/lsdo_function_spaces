@@ -162,9 +162,9 @@ class BSplineSpace(FunctionSpace):
                 knots_w = self.knots[self.coefficients_shape[0]+order_u + self.coefficients_shape[1]+order_v:]  # This should probably use knot_indices
 
             get_basis_volume_matrix(order_u, self.coefficients_shape[0], parametric_derivative_orders[0], u_vec, knots_u,
-                order_v, self.coefficients_shape[1], parametric_derivative_orders[1], v_vec, knots_v, 
-                order_w, self.coefficients_shape[2], parametric_derivative_orders[2], w_vec, knots_w, 
-                len(u_vec), data, row_indices, col_indices)
+                                    order_v, self.coefficients_shape[1], parametric_derivative_orders[1], v_vec, knots_v, 
+                                    order_w, self.coefficients_shape[2], parametric_derivative_orders[2], w_vec, knots_w, 
+                                    len(u_vec), data, row_indices, col_indices)
             
         basis_matrix = sps.csc_matrix((data, (row_indices, col_indices)), shape=(len(u_vec), num_coefficient_elements))
 
@@ -183,31 +183,35 @@ class BSplineSpace(FunctionSpace):
         '''
         Computes the distance bounds for the given point.
         '''
-        if direction is None:
-            if not hasattr(function, 'bounding_box'):
-                coefficients = function.coefficients.value.reshape((-1, function.num_physical_dimensions))
-                function.bounding_box = np.zeros((2, coefficients.shape[-1]))
-                if self.num_parametric_dimensions == 1:
-                    function.bounding_box[0, 0] = np.min(coefficients)
-                    function.bounding_box[1, 0] = np.max(coefficients)
-                else:
-                    function.bounding_box[0, :] = np.min(coefficients, axis=0)
-                    function.bounding_box[1, :] = np.max(coefficients, axis=0)
+        if not hasattr(function, 'bounding_box'):
+            coefficients = function.coefficients.value.reshape((-1, function.num_physical_dimensions))
+            function.bounding_box = np.zeros((2, coefficients.shape[-1]))
+            if self.num_parametric_dimensions == 1:
+                function.bounding_box[0, 0] = np.min(coefficients)
+                function.bounding_box[1, 0] = np.max(coefficients)
+            else:
+                function.bounding_box[0, :] = np.min(coefficients, axis=0)
+                function.bounding_box[1, :] = np.max(coefficients, axis=0)
 
+        if direction is None:
             neg = function.bounding_box[0] - point
             pos = point - function.bounding_box[1]
-            return np.linalg.norm(np.maximum(np.maximum(neg, pos), 0))
+            distance_vector = np.maximum(np.maximum(neg, pos), 0)
+            return np.linalg.norm(distance_vector)
         else:
-            # Not sure how bounding box will effectively work with direction, so just compute grid search with coefficients
-            displacement = (function.coefficients.value - point).reshape((-1,point.shape[-1]))
-            rho = 1.e-3
-            upper_bound_on_distance_from_axis = ((1 + rho)*
-                                                 np.einsum('ij,ij->i', displacement, displacement)
-                                                 - np.dot(displacement, direction)**2)**(1/2)
-            minimum_upper_bound = np.min(upper_bound_on_distance_from_axis)
-            return minimum_upper_bound
-        
+            closest_point = np.zeros((len(point),))
+            for i in range(len(point)):
+                if point[i] < function.bounding_box[0, i]:
+                    closest_point[i] = function.bounding_box[0, i]
+                elif point[i] > function.bounding_box[1, i]:
+                    closest_point[i] = function.bounding_box[1, i]
+                else:
+                    closest_point[i] = point[i]
+            t = np.dot(direction, (closest_point - point)) / np.dot(direction, direction)
+            closest_point_on_line = point + t * direction
+            return np.linalg.norm(closest_point_on_line - closest_point)
 
+        
     def _generate_projection_grid_search_resolution(self, grid_search_density_parameter=1):
         '''
         Generates the resolution of the grid search for projection.
