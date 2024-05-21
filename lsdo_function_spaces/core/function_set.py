@@ -5,7 +5,13 @@ import csdl_alpha as csdl
 import numpy as np
 import scipy.sparse as sps
 import concurrent.futures
-# from multiprocessing import Pool
+
+import pickle
+from pathlib import Path
+import string
+import random
+
+
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
@@ -303,6 +309,24 @@ class FunctionSet:
         plot : bool = False
             Whether or not to plot the projection.
         '''
+        output = self._check_whether_to_load_projection(points, direction, 
+                                                                        grid_search_density_parameter, 
+                                                                        max_newton_iterations, 
+                                                                        newton_tolerance)
+        if isinstance(output, list):
+            parametric_coordinates = output
+            if plot:
+                projection_results = self.evaluate(parametric_coordinates).value
+                plotting_elements = []
+                plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
+                # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
+                plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
+                self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
+            return parametric_coordinates
+        else:
+            name_space_dict, long_name_space = output
+            
+
         options = {'direction': direction, 'grid_search_density_parameter': grid_search_density_parameter,
                      'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance}
         
@@ -332,27 +356,76 @@ class FunctionSet:
             with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
                 results = executor.map(find_best_surface_chunked, chunks)
 
-            output = []
+            parametric_coordinates = []
             for result in results:
-                output.extend(result)
+                parametric_coordinates.extend(result)
         else:
-            output = find_best_surface_chunked(points, self.functions, options)
+            parametric_coordinates = find_best_surface_chunked(points, self.functions, options)
+
+        characters = string.ascii_letters + string.digits  # Alphanumeric characters
+        # Generate a random string of the specified length
+        random_string = ''.join(random.choice(characters) for _ in range(6))
+        projections_folder = 'stored_files/projections'
+        name_space_file_path = projections_folder + '/name_space_dict.pickle'
+        name_space_dict[long_name_space] = random_string
+        with open(name_space_file_path, 'wb+') as handle:
+            pickle.dump(name_space_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        with open(projections_folder + f'/{random_string}.pickle', 'wb+') as handle:
+            pickle.dump(parametric_coordinates, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         if plot:
-            projection_results = self.evaluate(output).value
+            projection_results = self.evaluate(parametric_coordinates).value
             plotting_elements = []
             plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
             # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
             plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
             self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
 
-        return output
+        return parametric_coordinates
 
 
 
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
                                          max_newton_iterations:int=100, newton_tolerance:float=1e-6) -> bool:
-        pass
+
+        name_space = ''
+        for function in self.functions:
+            function_space = function.space
+
+            order = function_space.degree
+            coeff_shape = function_space.coefficients_shape
+            knot_vectors_norm = round(np.linalg.norm(function_space.knots), 2)
+
+            # if f'{target}_{str(order)}_{str(coeff_shape)}_{str(knot_vectors_norm)}' in name_space:
+            #     pass
+            # else:
+            function_coeffs = function.coefficients.value
+            name_space += f'_{function_coeffs}_{str(order)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
+        
+        long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}'
+
+        projections_folder = 'stored_files/projections'
+        name_space_file_path = projections_folder + '/name_space_dict.pickle'
+        
+        name_space_dict_file_path = Path(name_space_file_path)
+        if name_space_dict_file_path.is_file():
+            with open(name_space_file_path, 'rb') as handle:
+                name_space_dict = pickle.load(handle)
+        else:
+            Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
+            name_space_dict = {}
+
+        if long_name_space in name_space_dict.keys():
+            short_name_space = name_space_dict[long_name_space]
+            saved_projections_file = projections_folder + f'/{short_name_space}.pickle'
+            with open(saved_projections_file, 'rb') as handle:
+                parametric_coordinates = pickle.load(handle)
+                return parametric_coordinates
+        else:
+            Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
+
+            return name_space_dict, long_name_space
 
 
     def set_coefficients(self, coefficients:list[csdl.Variable], function_indices:list[int]=None) -> None:
