@@ -72,6 +72,7 @@ class Function:
         if coefficients is None:
             coefficients = self.coefficients
 
+
         basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
         # # values = basis_matrix @ coefficients
         if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
