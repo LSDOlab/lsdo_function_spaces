@@ -25,15 +25,16 @@ class FunctionSetSpace(lfs.FunctionSpace):
         Computes the basis matrix for the given parametric coordinates and derivative orders.
     '''
     num_parametric_dimensions : dict[int]
-    spaces : list[lfs.FunctionSpace]
-    connections : list[list[int]] = None
+    spaces : dict[lfs.FunctionSpace]
+    connections : dict[dict[int]] = None
 
     # @property
     # def index_to_coefficient_indices(self) -> dict[int, list[int]]:
     #     return self._index_to_coefficient_indices
 
     def __post_init__(self):
-        pass
+        if isinstance(self.spaces, list):
+            self.spaces = {i:space for i, space in enumerate(self.spaces)}
 
 
     def generate_parametric_grid(self, grid_resolution:tuple) -> list[tuple[int, np.ndarray]]:
@@ -52,7 +53,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
         '''
 
         parametric_grid = []
-        for i, space in enumerate(self.spaces):
+        for i, space in self.spaces.items():
             space_parametric_grid = space.generate_parametric_grid(grid_resolution=grid_resolution)
             for j in range(space_parametric_grid.shape[0]):
                 parametric_grid.append((i, space_parametric_grid[j,:]))
@@ -146,7 +147,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
         values_per_function = {}
         parametric_coordinates_per_function = {}
         parametric_derivative_orders_per_function = {}
-        for i, space in enumerate(self.spaces):
+        for i, space in self.spaces.items():
             values_per_function[i] = []
             parametric_coordinates_per_function[i] = []
             parametric_derivative_orders_per_function[i] = None
@@ -159,17 +160,16 @@ class FunctionSetSpace(lfs.FunctionSpace):
             if parametric_derivative_orders is not None:
                 parametric_derivative_orders_per_function[index].append(parametric_derivative_orders[i])
 
-        for i, space in enumerate(self.spaces):
+        for i, space in self.spaces.items():
             if len(values_per_function[i]) > 0:
                 parametric_coordinates_per_function[i] = np.vstack(parametric_coordinates_per_function[i])
 
         # Fit each function in the set
-        coefficients = []
-        for i, space in enumerate(self.spaces):
+        coefficients = {}
+        for i, space in self.spaces.items():
             if len(values_per_function[i]) > 0:
-                coefficients.append(space.fit(values=values_per_function[i], parametric_coordinates=parametric_coordinates_per_function[i],
-                                                parametric_derivative_orders=None, 
-                                                regularization_parameter=regularization_parameter))
+                coefficients[i] = space.fit(values=values_per_function[i], parametric_coordinates=parametric_coordinates_per_function[i],
+                                            parametric_derivative_orders=None, regularization_parameter=regularization_parameter)
             else:
                 print(f"No data was provided for function {i}.")
                 # Kind of hacky way to get size of coefficients
@@ -177,7 +177,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
                 basis_vector = space.compute_basis_matrix(parametric_coordinates=parametric_coordinate)
                 num_coefficients = basis_vector.shape[1]
                 function_coefficients = csdl.Variable(value=np.zeros((num_coefficients,num_physical_dimensions)))
-                coefficients.append(function_coefficients)
+                coefficients[i] = function_coefficients
 
         return coefficients
     
@@ -213,9 +213,9 @@ class FunctionSetSpace(lfs.FunctionSpace):
                                 parametric_derivative_orders=parametric_derivative_orders, basis_matrix=basis_matrix,
                                 regularization_parameter=regularization_parameter)
         
-        functions = []
-        for i, function_coefficients in enumerate(coefficients):
-            functions.append(lfs.Function(space=self.spaces[i], coefficients=function_coefficients))
+        functions = {}
+        for i, function_coefficients in coefficients.items():
+            functions[i] = lfs.Function(space=self.spaces[i], coefficients=function_coefficients)
 
         function_set = lfs.FunctionSet(functions=functions)
 

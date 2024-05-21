@@ -17,7 +17,7 @@ import random
 import lsdo_function_spaces as lfs
 
 
-def find_best_surface_chunked(chunk, functions:list[lfs.Function]=None, options=None):
+def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=None):
     # New approach - 2 stages: 
     # 1. Find lower bound of error for each surface via very fast method (eg. bounding box)
     # 2. Project point onto surfaces in order of increasing lower bound of error; 
@@ -41,12 +41,12 @@ def find_best_surface_chunked(chunk, functions:list[lfs.Function]=None, options=
     for point in chunk:
 
         if direction is None:
-            lower_bounds = {i: function._compute_distance_bounds(point) for i, function in enumerate(functions)}
+            lower_bounds = {i: function._compute_distance_bounds(point) for i, function in functions.items()}
             sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: lower_bounds[x])
 
         else:
-            lower_bounds = {i: function._compute_distance_bounds(point, direction=direction) for i, function in enumerate(functions)}
-            distance_bounds = {i: function._compute_distance_bounds(point) for i, function in enumerate(functions)}
+            lower_bounds = {i: function._compute_distance_bounds(point, direction=direction) for i, function in functions.items()}
+            distance_bounds = {i: function._compute_distance_bounds(point) for i, function in functions.items()}
             sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: (lower_bounds[x], distance_bounds[x]))
 
         # project onto the first surface
@@ -127,21 +127,27 @@ class FunctionSet:
     space : lfs.FunctionSetSpace = None
         The function set space that the function set is from. If None (recommended), the function set space will be inferred from the functions.
     '''
-    functions: list[lfs.Function]
-    function_names : list[str] = None
+    functions: dict[lfs.Function]
+    function_names : dict[str] = None
     name : str = None
     space : lfs.FunctionSetSpace = None
 
     def __post_init__(self):
+        if isinstance(self.functions, list):
+            self.functions = {i:function for i, function in enumerate(self.functions)}
+
+        if isinstance(self.function_names, list):
+            self.function_names = {i:function_name for i, function_name in enumerate(self.function_names)}
+
         if self.function_names is None:
             self.function_names = [None for _ in range(len(self.functions))]
-            for i, function in enumerate(self.functions):
+            for i, function in self.functions.items():
                 self.function_names[i] = function.name
 
         if self.space is None:
             self.space = lfs.FunctionSetSpace(
-                num_parametric_dimensions=[function.space.num_parametric_dimensions for function in self.functions],
-                spaces=[function.space for function in self.functions])
+                num_parametric_dimensions={i:function.space.num_parametric_dimensions for i, function in self.functions.items()},
+                spaces={i:function.space for i, function in self.functions.items()})
             
 
     def copy(self) -> lfs.FunctionSet:
@@ -153,7 +159,7 @@ class FunctionSet:
         function_set : lfs.FunctionSet
             The copied function set.
         '''
-        functions = [function.copy() for function in self.functions]
+        functions = {i:function.copy() for i, function in self.functions.items()}
         function_set = lfs.FunctionSet(functions=functions, function_names=self.function_names, name=self.name)
         return function_set
             
@@ -192,7 +198,7 @@ class FunctionSet:
         # Evaluate each function at the given coordinates
         function_values_list = []
         functions_with_points = []
-        for i, function in enumerate(self.functions):
+        for i, function in self.functions.items():
             indices = np.where(np.array(function_indices) == i)[0]
             para_coords = np.array([function_parametric_coordinates[j] for j in indices]).reshape(-1, function.space.num_parametric_dimensions)
             if parametric_derivative_orders is not None:
@@ -227,8 +233,8 @@ class FunctionSet:
         return function_values
     
 
-    def refit(self, new_function_spaces:list[lfs.FunctionSpace]|lfs.FunctionSpace, indices_of_functions_to_refit:list[int]=None, 
-              grid_resolution:tuple=None,  parametric_coordinates:list[tuple[int,np.ndarray]]=None,
+    def refit(self, new_function_spaces:dict[lfs.FunctionSpace]|lfs.FunctionSpace, indices_of_functions_to_refit:list[int]=None, 
+              grid_resolution:tuple=None,  parametric_coordinates:dict[tuple[int,np.ndarray]]=None,
               parametric_derivative_orders:list[np.ndarray]=None, regularization_parameter:float=None) -> lfs.FunctionSet:
         '''
         Refits functions in the function set. Either a grid resolution or parametric coordinates must be provided. 
@@ -268,16 +274,16 @@ class FunctionSet:
         elif len(new_function_spaces) == 1:
             new_function_spaces = new_function_spaces * len(indices_of_functions_to_refit)
 
-        new_functions = []
-        for i, function in enumerate(self.functions):
+        new_functions = {}
+        for i, function in self.functions.items:
             if i in indices_of_functions_to_refit:
-                new_functions.append(function.refit(new_function_space=new_function_spaces[i], 
+                new_functions[i] = function.refit(new_function_space=new_function_spaces[i], 
                                                     grid_resolution=grid_resolution,
                                                     parametric_coordinates=parametric_coordinates, 
                                                     parametric_derivative_orders=parametric_derivative_orders,
-                                                    regularization_parameter=regularization_parameter))
+                                                    regularization_parameter=regularization_parameter)
             else:
-                new_functions.append(function)
+                new_functions[i] = function
 
         new_function_set = lfs.FunctionSet(functions=new_functions, function_names=self.function_names)
         return new_function_set
@@ -387,10 +393,10 @@ class FunctionSet:
 
 
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
-                                         max_newton_iterations:int=100, newton_tolerance:float=1e-6) -> bool:
+                                          max_newton_iterations:int=100, newton_tolerance:float=1e-6) -> bool:
 
         name_space = ''
-        for function in self.functions:
+        for function in self.functions.values():
             function_space = function.space
 
             order = function_space.degree
@@ -440,7 +446,7 @@ class FunctionSet:
             The indices of the functions to set the coefficients of. If None, all the functions are set to the coefficients.
         '''
         if function_indices is None:
-            function_indices = np.arange(len(self.functions))
+            function_indices = np.array([self.functions.keys()])
 
         if len(coefficients) != len(function_indices):
             raise ValueError("The number of coefficients must match the number of functions to set. " +
@@ -466,7 +472,7 @@ class FunctionSet:
         '''
         function_indices = []
         for function_name in function_names:
-            function_indices.append(self.function_names.index(function_name))
+            function_indices.append([self.function_names.keys()][[self.function_names.values()].index(function_name)])
         return function_indices
     
 
@@ -488,7 +494,7 @@ class FunctionSet:
             search_strings = [search_strings]
 
         function_indices = []
-        for i, function_name in enumerate(self.function_names):
+        for i, function_name in self.function_names.items():
             for search_string in search_strings:
                 if search_string in function_name:
                     function_indices.append(i)
@@ -521,8 +527,8 @@ class FunctionSet:
         # Remove duplicates
         function_indices = list(set(function_indices))
 
-        functions = [self.functions[i] for i in function_indices]
-        function_names = [self.function_names[i] for i in function_indices]
+        functions = {i:self.functions[i] for i in function_indices}
+        function_names = {i:self.function_names[i] for i in function_indices}
         subset = lfs.FunctionSet(functions=functions, function_names=function_names, name=name)
         return subset
 
@@ -561,7 +567,7 @@ class FunctionSet:
 
         # Then there must be a discrete index so loop over subfunctions and plot them
         plotting_elements = additional_plotting_elements.copy()
-        for i, function in enumerate(self.functions):
+        for i, function in self.functions.items():
             plotting_elements = function.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
                                                surface_texture=surface_texture, line_width=line_width,
                                                additional_plotting_elements=plotting_elements, show=False)

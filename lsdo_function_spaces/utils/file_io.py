@@ -27,7 +27,7 @@ def _check_if_load_stored_import(file_name:str, name:str='geometry', parallelize
     if path.is_file():
         with open(file_path, 'rb') as handle:
             function_set = pickle.load(handle)
-            for function in function_set.functions:
+            for function in function_set.functions.values():
                 function.coefficients = csdl.Variable(value=function.coefficients)
         return function_set
     else:
@@ -151,7 +151,7 @@ def import_file(file_name:str, parallelize:bool=True) -> lfs.FunctionSet:
     Path("stored_files/imports").mkdir(parents=True, exist_ok=True)
     with open(file_path, 'wb+') as handle:
         b_spline_set_copy = b_spline_set.copy()
-        for i, function in enumerate(b_spline_set.functions):
+        for i, function in b_spline_set.functions.items():
             function_copy = function.copy()
             function_copy.coefficients = function.coefficients.value.copy()
             b_spline_set_copy.functions[i] = function_copy
