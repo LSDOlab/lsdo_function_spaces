@@ -243,16 +243,20 @@ class FunctionSpace:
                 fitting_rhs = csdl.sparse.matvec(basis_matrix.T, values)
                 coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
         else:
-            fitting_rhs = basis_matrix.T.dot(values)
-            if sps.issparse(fitting_matrix):
-                coefficients = np.zeros((fitting_matrix.shape[0], fitting_rhs.shape[1]))
-                if len(fitting_rhs.shape) > 1:
-                    for i in range(fitting_rhs.shape[1]):
-                        coefficients[:,i] = spsl.spsolve(fitting_matrix, fitting_rhs[:,i])
-                else:
-                    coefficients = spsl.spsolve(fitting_matrix, fitting_rhs)
+            if isinstance(values, csdl.Variable):
+                fitting_rhs = basis_matrix.T @ values
+                coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
             else:
-                coefficients = np.linalg.solve(fitting_matrix, fitting_rhs)
+                fitting_rhs = basis_matrix.T.dot(values)
+                if sps.issparse(fitting_matrix):
+                    coefficients = np.zeros((fitting_matrix.shape[0], fitting_rhs.shape[1]))
+                    if len(fitting_rhs.shape) > 1:
+                        for i in range(fitting_rhs.shape[1]):
+                            coefficients[:,i] = spsl.spsolve(fitting_matrix, fitting_rhs[:,i])
+                    else:
+                        coefficients = spsl.spsolve(fitting_matrix, fitting_rhs)
+                else:
+                    coefficients = np.linalg.solve(fitting_matrix, fitting_rhs)
 
         return coefficients
         # raise NotImplementedError(f"Fit method must be implemented in {type(self)} class.")

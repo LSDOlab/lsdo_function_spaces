@@ -660,8 +660,10 @@ class Function:
             if isinstance(color, Function):
                 if color.space.num_parametric_dimensions != 2:
                     raise ValueError("The color function must be 2D to plot as a surface.")
-                
                 color = color.evaluate(parametric_coordinates).value
+                if len(color.shape) > 1:
+                    if color.shape[1] > 1:
+                        color = np.linalg.norm(color, axis=1)
         elif point_type == 'coefficients':
             points = self.coefficients.value    # Do I need to reshape this?
 

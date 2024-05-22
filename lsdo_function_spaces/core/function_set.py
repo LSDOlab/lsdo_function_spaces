@@ -108,8 +108,6 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
     return results
 
 
-
-
 @dataclass
 class FunctionSet:
     '''
@@ -289,7 +287,7 @@ class FunctionSet:
         return new_function_set
 
 
-    def project(self, points:np.ndarray, num_workers:int=8, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
+    def project(self, points:np.ndarray, num_workers:int=20, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
@@ -568,7 +566,11 @@ class FunctionSet:
         # Then there must be a discrete index so loop over subfunctions and plot them
         plotting_elements = additional_plotting_elements.copy()
         for i, function in self.functions.items():
-            plotting_elements = function.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+            if isinstance(color, lfs.FunctionSet):
+                function_color = color.functions[i]
+            else:    
+                function_color = color
+            plotting_elements = function.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=function_color, color_map=color_map,
                                                surface_texture=surface_texture, line_width=line_width,
                                                additional_plotting_elements=plotting_elements, show=False)
         if show:
@@ -577,7 +579,44 @@ class FunctionSet:
             else:
                 lfs.show_plot(plotting_elements=plotting_elements, title='Function Set Plot')
         return plotting_elements
+    
+    def create_parallel_space(self, function_space:lfs.FunctionSpace) -> lfs.FunctionSetSpace:
+        '''
+        Creates a parallel function set space with the given function space.
 
+        Parameters
+        ----------
+        function_space : lfs.FunctionSpace
+            The function space to create the parallel function set space with.
+
+        Returns
+        -------
+        parallel_function_set : lfs.FunctionSetSpace
+            The parallel function set space with the given function space.
+        '''
+        parallel_spaces = {}
+        for i in self.functions.keys():
+            parallel_spaces[i] = function_space
+        parallel_function_set = lfs.FunctionSetSpace(num_parametric_dimensions=self.space.num_parametric_dimensions, 
+                                                     spaces=parallel_spaces, connections=self.space.connections)
+        return parallel_function_set
+
+    def generate_parametric_grid(self, grid_resolution:tuple) -> list[tuple[int, np.ndarray]]:
+        '''
+        Generates a parametric grid for the function set.
+
+        Parameters
+        ----------
+        grid_resolution : tuple
+            The resolution of the grid in each parametric dimension.
+
+        Returns
+        -------
+        parametric_grid : list[tuple[int, np.ndarray]]
+            The grid of parametric coordinates for the FunctionSet (makes a grid of the specified resolution over each function in the set).
+        '''
+
+        return self.space.generate_parametric_grid(grid_resolution=grid_resolution)
 
 if __name__ == "__main__":
     import csdl_alpha as csdl

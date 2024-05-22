@@ -39,7 +39,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
 
     def generate_parametric_grid(self, grid_resolution:tuple) -> list[tuple[int, np.ndarray]]:
         '''
-        Generates a parametric grid for the B-spline set.
+        Generates a parametric grid for the function set space.
 
         Parameters
         ----------
@@ -168,7 +168,9 @@ class FunctionSetSpace(lfs.FunctionSpace):
         coefficients = {}
         for i, space in self.spaces.items():
             if len(values_per_function[i]) > 0:
-                coefficients[i] = space.fit(values=values_per_function[i], parametric_coordinates=parametric_coordinates_per_function[i],
+                if isinstance(values, csdl.Variable):
+                    function_values = csdl.blockmat([[value.reshape((1, value.shape[0]))] for value in values_per_function[i]])
+                coefficients[i] = space.fit(values=function_values, parametric_coordinates=parametric_coordinates_per_function[i],
                                             parametric_derivative_orders=None, regularization_parameter=regularization_parameter)
             else:
                 print(f"No data was provided for function {i}.")
@@ -184,7 +186,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
 
     def fit_function_set(self, values:Union[csdl.Variable,np.ndarray], parametric_coordinates:list[tuple[int,np.ndarray]]=None,
             parametric_derivative_orders:list[tuple]=None, basis_matrix:Union[sps.csc_matrix, np.ndarray]=None,
-            regularization_parameter:float=None) -> list[csdl.Variable]:
+            regularization_parameter:float=None) -> lfs.FunctionSet:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
         parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
