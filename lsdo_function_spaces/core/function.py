@@ -83,7 +83,7 @@ class Function:
                 coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
                 values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
         else:
-            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], -1))
+            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], np.prod(coefficients.shape)//basis_matrix.shape[1]))
 
         if parametric_coordinates.shape[0] == 1 or len(parametric_coordinates.shape) == 1:
             values = values[0]  # Get rid of the extra dimension if only one point is evaluated

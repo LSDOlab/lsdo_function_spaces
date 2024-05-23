@@ -138,7 +138,7 @@ class FunctionSet:
             self.function_names = {i:function_name for i, function_name in enumerate(self.function_names)}
 
         if self.function_names is None:
-            self.function_names = [None for _ in range(len(self.functions))]
+            self.function_names = {i:None for i in self.functions}
             for i, function in self.functions.items():
                 self.function_names[i] = function.name
 
