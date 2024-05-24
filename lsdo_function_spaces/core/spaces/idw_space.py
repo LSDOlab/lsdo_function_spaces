@@ -5,7 +5,6 @@ from scipy.spatial.distance import cdist
 from dataclasses import dataclass
 from typing import Union
 
-@dataclass
 class IDWFunctionSpace(FunctionSpace):
     """
     Inverse Distance Weighting (IDW) Function Space.
@@ -25,12 +24,16 @@ class IDWFunctionSpace(FunctionSpace):
         The size of the grid in each parametric dimension. Default is (10,).
     """
 
-    order : float
-    points : np.ndarray = None
-    conserve : bool = True
-    grid_size : Union[int, tuple] = 10
+    def __init__(self, num_parametric_dimensions:int, order:float, points:np.ndarray=None, conserve:bool=True, grid_size:Union[int, tuple]=10):
+        # TODO: replace num_parametric_dimensions with points.shape[1]
 
-    def __post_init__(self):
+        self.order = order
+        self.conserve = conserve
+        self.grid_size = grid_size
+        self.points = points
+
+
+    # def __post_init__(self):
         """
         Initialize an IDW function space.
 
@@ -44,9 +47,12 @@ class IDWFunctionSpace(FunctionSpace):
         """
         if self.points is None:
             if isinstance(self.grid_size, int):
-                self.grid_size = (self.grid_size,)*self.num_parametric_dimensions
+                self.grid_size = (self.grid_size,)*num_parametric_dimensions
             linspaces = [np.linspace(0, 1, n) for n in self.grid_size]
             self.points = np.array(np.meshgrid(*linspaces)).T.reshape(-1, len(linspaces))
+
+        super().__init__(num_parametric_dimensions, (self.points.shape[0],))
+        
 
     def compute_basis_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders: np.ndarray=None, expansion_factor:int=None) -> np.ndarray:
         """

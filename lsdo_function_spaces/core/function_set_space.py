@@ -36,6 +36,33 @@ class FunctionSetSpace(lfs.FunctionSpace):
         if isinstance(self.spaces, list):
             self.spaces = {i:space for i, space in enumerate(self.spaces)}
 
+    def generate_implicit_function(self, num_physical_dimensions) -> tuple[csdl.ImplicitVariable, lfs.FunctionSet]:
+        '''
+        Generates an implicit function for the FunctionSet.
+
+        Returns
+        -------
+        implicit_function : lfs.Function
+            The implicit function for the FunctionSet.
+        '''
+        size = 0
+        for space in self.spaces.values():
+            size += np.prod(space.coefficients_shape)
+
+        implicit_var = csdl.ImplicitVariable((size, num_physical_dimensions), value=0)
+
+        functions = {}
+        start = 0
+        for i, space in self.spaces.items():
+            end = start + np.prod(space.coefficients_shape)
+            function = lfs.Function(space=space, coefficients=implicit_var[start:end,:].reshape(space.coefficients_shape + (num_physical_dimensions,)))
+            functions[i] = function
+            start = end
+
+        function_set = lfs.FunctionSet(functions=functions, space=self)
+
+        return implicit_var, function_set
+
 
     def generate_parametric_grid(self, grid_resolution:tuple) -> list[tuple[int, np.ndarray]]:
         '''

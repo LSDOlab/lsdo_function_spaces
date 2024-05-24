@@ -9,7 +9,6 @@ from lsdo_b_splines_cython.cython.basis_matrix_surface_py import get_basis_surfa
 from lsdo_b_splines_cython.cython.basis_matrix_volume_py import get_basis_volume_matrix
 from lsdo_b_splines_cython.cython.get_open_uniform_py import get_open_uniform
 
-@dataclass
 class BSplineSpace(FunctionSpace):
     '''
     Class for representing the space of BSplineFunctions of a particular degree.
@@ -33,13 +32,14 @@ class BSplineSpace(FunctionSpace):
     compute_basis_matrix(parametric_coordinates: np.ndarray, parametric_derivative_orders: np.ndarray = None) -> sps.csc_matrix:
         Computes the basis matrix for the given parametric coordinates and derivative orders.
     '''
-    
-    degree : tuple
-    coefficients_shape : tuple
-    knots : np.ndarray = None
-    knot_indices : list[np.ndarray] = None
+    def __init__(self, num_parametric_dimensions:int, degree:tuple, coefficients_shape:tuple, knots:np.ndarray=None, knot_indices:list[np.ndarray]=None):
+        # TODO: replace num_parametric_dimensions with len(coefficients_shape)
+        self.degree = degree
+        self.knots = knots
+        self.knot_indices = knot_indices
+        super().__init__(num_parametric_dimensions, coefficients_shape)
 
-    def __post_init__(self):
+    # def __post_init__(self):
         # super().__post_init__()
         if isinstance(self.degree, int):
             self.degree = (self.degree,)*self.num_parametric_dimensions
@@ -65,7 +65,6 @@ class BSplineSpace(FunctionSpace):
                 num_knots_i = self.coefficients_shape[i] + self.degree[i] + 1
                 self.knot_indices.append(np.arange(knot_index, knot_index + num_knots_i))
                 knot_index += num_knots_i
-
 
     def compute_basis_matrix(self, parametric_coordinates: np.ndarray, parametric_derivative_orders: np.ndarray = None,
                                    expansion_factor:int=None) -> sps.csc_matrix:

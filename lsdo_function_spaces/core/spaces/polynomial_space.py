@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Union
 from numpy.polynomial import polynomial as poly
 
-@dataclass
 class PolynomialSpace(FunctionSpace):
     """
     Inverse Distance Weighting (IDW) Function Space.
@@ -26,9 +25,11 @@ class PolynomialSpace(FunctionSpace):
         The size of the grid in each parametric dimension. Default is (10,).
     """
 
-    order : Union[int, tuple[int]]
+    def __init__(self, num_parametric_dimensions:int, order:Union[int, tuple[int]]):
+        self.order = order
 
-    def __post_init__(self):
+
+    # def __post_init__(self):
         """
         Initialize an IDW function space.
 
@@ -44,6 +45,7 @@ class PolynomialSpace(FunctionSpace):
             self.order = (self.order,)*self.num_parametric_dimensions
 
         self.size = np.prod([order + 1 for order in self.order])
+        super().__init__(num_parametric_dimensions, (self.size,))
 
     def compute_basis_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None, expansion_factor:int=None) -> np.ndarray:
         """

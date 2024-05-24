@@ -148,6 +148,26 @@ class FunctionSet:
                 spaces={i:function.space for i, function in self.functions.items()})
             
 
+    def stack_coefficients(self) -> csdl.Variable:
+        '''
+        Stacks the coefficients of the functions in the function set.
+
+        Returns
+        -------
+        coefficients : csdl.Variable
+            The stacked coefficients of the functions in the function set.
+        '''
+        coefficients = []
+        for i, function in self.functions.items():
+            shape = function.coefficients.shape
+            if len(shape) == 1:
+                shape = (1, shape[0])
+            if len(shape) >= 2:
+                shape = (np.prod(shape[:-1]), shape[-1])
+            coefficients.append([function.coefficients.reshape((shape))])
+        coefficients = csdl.blockmat(coefficients)
+        return coefficients
+
     def copy(self) -> lfs.FunctionSet:
         '''
         Copies the function set.
