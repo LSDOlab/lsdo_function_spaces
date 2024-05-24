@@ -313,6 +313,9 @@ class FunctionSet:
         plot : bool = False
             Whether or not to plot the projection.
         '''
+        if isinstance(points, csdl.Variable):
+            points = points.value
+        
         output = self._check_whether_to_load_projection(points, direction, 
                                                                         grid_search_density_parameter, 
                                                                         max_newton_iterations, 
@@ -334,8 +337,7 @@ class FunctionSet:
         options = {'direction': direction, 'grid_search_density_parameter': grid_search_density_parameter,
                      'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance}
         
-        if isinstance(points, csdl.Variable):
-            points = points.value
+
 
         if len(points.shape) == 1:
             points = points.reshape(1, -1)
@@ -404,9 +406,9 @@ class FunctionSet:
             # if f'{target}_{str(order)}_{str(coeff_shape)}_{str(knot_vectors_norm)}' in name_space:
             #     pass
             # else:
-            function_coeffs = function.coefficients.value
+            function_coeffs = np.linalg.norm(function.coefficients.value)
             name_space += f'_{function_coeffs}_{str(order)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
-        
+
         long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}'
 
         projections_folder = 'stored_files/projections'
