@@ -293,7 +293,7 @@ class FunctionSet:
             new_function_spaces = new_function_spaces * len(indices_of_functions_to_refit)
 
         new_functions = {}
-        for i, function in self.functions.items:
+        for i, function in self.functions.items():
             if i in indices_of_functions_to_refit:
                 new_functions[i] = function.refit(new_function_space=new_function_spaces[i], 
                                                     grid_resolution=grid_resolution,
