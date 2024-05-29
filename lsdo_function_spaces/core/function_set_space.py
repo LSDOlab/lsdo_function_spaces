@@ -36,32 +36,48 @@ class FunctionSetSpace(lfs.FunctionSpace):
         if isinstance(self.spaces, list):
             self.spaces = {i:space for i, space in enumerate(self.spaces)}
 
-    def generate_implicit_function(self, num_physical_dimensions) -> tuple[csdl.ImplicitVariable, lfs.FunctionSet]:
+    def initialize_function(self, num_physical_dimensions:int, value:float=0, implicit:bool=False) -> tuple[csdl.Variable, lfs.FunctionSet]:
         '''
-        Generates an implicit function for the FunctionSet.
+        Generates a function set with the given number of physical dimensions and initializes the coefficients to the given value.
+
+        Parameters
+        ----------
+        num_physical_dimensions : int
+            The number of physical dimensions for the function set.
+        value : float = 0
+            The value to initialize the coefficients to.
+        implicit : bool = False
+            If True, the coefficients are stored as an ImplicitVariable.
 
         Returns
         -------
-        implicit_function : lfs.Function
-            The implicit function for the FunctionSet.
+        coeff_var : csdl.Variable
+            Variable consisting of the stacked coefficients of each function in the set.
+            If implicit is True, the variable is an ImplicitVariable.
+        function_set : lfs.FunctionSet
+            The function set with the initialized coefficients.
         '''
+        
         size = 0
         for space in self.spaces.values():
             size += np.prod(space.coefficients_shape)
 
-        implicit_var = csdl.ImplicitVariable((size, num_physical_dimensions), value=0)
+        if implicit:
+            coeff_var = csdl.ImplicitVariable((size, num_physical_dimensions), value=value)
+        else:
+            coeff_var = csdl.Variable((size, num_physical_dimensions), value=value)
 
         functions = {}
         start = 0
         for i, space in self.spaces.items():
             end = start + np.prod(space.coefficients_shape)
-            function = lfs.Function(space=space, coefficients=implicit_var[start:end,:].reshape(space.coefficients_shape + (num_physical_dimensions,)))
+            function = lfs.Function(space=space, coefficients=coeff_var[start:end,:].reshape(space.coefficients_shape + (num_physical_dimensions,)))
             functions[i] = function
             start = end
 
         function_set = lfs.FunctionSet(functions=functions, space=self)
 
-        return implicit_var, function_set
+        return coeff_var, function_set
 
 
     def generate_parametric_grid(self, grid_resolution:tuple) -> list[tuple[int, np.ndarray]]:

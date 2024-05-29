@@ -307,7 +307,7 @@ class FunctionSet:
         return new_function_set
 
 
-    def project(self, points:np.ndarray, num_workers:int=20, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
+    def project(self, points:np.ndarray, num_workers:int=16, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
@@ -595,6 +595,8 @@ class FunctionSet:
             plotting_elements = function.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=function_color, color_map=color_map,
                                                surface_texture=surface_texture, line_width=line_width,
                                                additional_plotting_elements=plotting_elements, show=False)
+        if isinstance(color, lfs.FunctionSet):
+            plotting_elements[-1].add_scalarbar()
         if show:
             if self.name is not None:
                 lfs.show_plot(plotting_elements=plotting_elements, title=self.name)
