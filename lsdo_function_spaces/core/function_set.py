@@ -229,9 +229,15 @@ class FunctionSet:
                 functions_with_points.append(i)
 
         # Arrange the function values back into the correct element of the array
-        function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates), function_values_list[0].shape[-1])))
+        if len(function_values_list) == 0:
+            raise ValueError("No points were evaluated.")
+        if self.functions[functions_with_points[0]].num_physical_dimensions == 1:
+            function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates),)))
+
+        else:
+            function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates), function_values_list[0].shape[-1])))
         for i, function_value in enumerate(function_values_list):
-            indices = list(np.where(np.array(function_indices) == functions_with_points[i])[0])
+            indices = (np.array(function_indices) == functions_with_points[i]).nonzero()[0].tolist()
             # indices = list(np.where(np.array(function_indices) == i)[0])
             if len(indices) == 0:
                 continue
