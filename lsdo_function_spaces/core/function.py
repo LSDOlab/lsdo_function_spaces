@@ -361,10 +361,13 @@ class Function:
                 )
 
             # Remove dof that are on constrant boundary and want to leave (active subspace method)
-            coorinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
-            coorinates_to_remove_on_upper_boundary = np.logical_and(current_guess[points_left_to_converge] == 1, gradient < 0)
-            coorinates_to_remove_boolean = np.logical_or(coorinates_to_remove_on_lower_boundary, coorinates_to_remove_on_upper_boundary)
-            coordinates_to_keep_boolean = np.logical_not(coorinates_to_remove_boolean)
+            coordinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
+            coordinates_to_remove_on_upper_boundary = np.logical_and(current_guess[points_left_to_converge] == 1, gradient < 0)
+            coordinates_to_from_zero_hessian_column = np.where(~hessian.any(axis=0))[0]
+            coordinates_to_remove_boolean = np.logical_or(coordinates_to_remove_on_lower_boundary, coordinates_to_remove_on_upper_boundary)
+            coordinates_to_remove_boolean[coordinates_to_from_zero_hessian_column] = True
+
+            coordinates_to_keep_boolean = np.logical_not(coordinates_to_remove_boolean)
             indices_to_keep = []
             for i in range(points_left_to_converge.shape[0]):
                 indices_to_keep.append(np.arange(self.space.num_parametric_dimensions)[coordinates_to_keep_boolean[i]])
