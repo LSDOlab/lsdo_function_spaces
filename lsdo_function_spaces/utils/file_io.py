@@ -3,6 +3,43 @@ import lsdo_function_spaces as lfs
 from joblib import Parallel, delayed
 import pandas as pd
 import re
+import csdl_alpha as csdl
+import pickle
+from pathlib import Path
+import os
+
+
+def _check_if_load_stored_import(file_name:str, name:str='geometry', parallelize:bool=True) -> lfs.FunctionSet:
+    '''
+    Imports geometry from a file.
+
+    Parameters
+    ----------
+    file_name : str
+        The name of the file (with path) that containts the geometric information.
+    '''
+    fn = os.path.basename(file_name)
+    fn_wo_ext = fn[:fn.rindex('.')]
+
+    file_path = f"stored_files/imports/{fn_wo_ext}_stored_import.pickle"
+    path = Path(file_path)
+
+    if path.is_file():
+        with open(file_path, 'rb') as handle:
+            function_set = pickle.load(handle)
+            for function in function_set.functions.values():
+                function.coefficients = csdl.Variable(value=function.coefficients)
+        return function_set
+    else:
+        return None
+    #     b_splines = import_file(file_name, parallelize=parallelize)
+    #     # Since we can't pickle csdl variables, convert them back to numpy arrays
+    #     for b_spline_name, b_spline in b_splines.items():
+    #         b_spline.coefficients = b_spline.coefficients.value
+
+    #     Path("stored_files/imports").mkdir(parents=True, exist_ok=True)
+    #     with open(file_path, 'wb+') as handle:
+    #         pickle.dump(b_splines, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def import_file(file_name:str, parallelize:bool=True) -> lfs.FunctionSet:
@@ -34,6 +71,12 @@ def import_file(file_name:str, parallelize:bool=True) -> lfs.FunctionSet:
             return
 
     '''Stage 1: Parse all information and line numbers for each surface and create B-spline objects'''
+    loaded_file = _check_if_load_stored_import(file_name)
+
+    if loaded_file:
+        return loaded_file
+        
+    
     b_splines = {}
     b_spline_spaces = {}
     b_splines_to_spaces_dict = {}
@@ -99,28 +142,24 @@ def import_file(file_name:str, parallelize:bool=True) -> lfs.FunctionSet:
         for i in range(num_surf):
             b_spline_list.append(_build_b_splines(i, parsed_info_dict, point_table, b_spline_spaces, b_splines_to_spaces_dict))
 
-    # b_splines = {}
-    # num_parametric_dimensions = {}
-    # index_to_space = {}
-    # name_to_index = {}
-    # coefficients = []
-    # for i, b_spline in enumerate(b_spline_list):
-    #     b_splines[b_spline.name] = b_spline
-    #     num_parametric_dimensions[i] = 2
-    #     name_to_index[b_spline.name] = i
-    #     coefficients.append(b_spline.coefficients.value.reshape((b_spline.coefficients.size//3,3)))
-    #     index_to_space[i] = list(b_spline_spaces.keys()).index(b_splines_to_spaces_dict[b_spline.name])
-    # coefficients = np.vstack(coefficients)
-
-    # b_spline_spaces = list(b_spline_spaces.values())
-    # b_spline_set_space = lfs.FunctionSetSpace(num_parametric_dimensions=num_parametric_dimensions, spaces=b_spline_spaces,
-    #                                           index_to_space=index_to_space, name_to_index=name_to_index)
-    # b_spline_set = lfs.Function(space=b_spline_set_space, coefficients=coefficients)
+   
     b_spline_set = lfs.FunctionSet(b_spline_list, name='imported_geometry')
+    fn = os.path.basename(file_name)
+    fn_wo_ext = fn[:fn.rindex('.')]
+    file_path = f"stored_files/imports/{fn_wo_ext}_stored_import.pickle"
+    
+    Path("stored_files/imports").mkdir(parents=True, exist_ok=True)
+    with open(file_path, 'wb+') as handle:
+        b_spline_set_copy = b_spline_set.copy()
+        for i, function in b_spline_set.functions.items():
+            function_copy = function.copy()
+            function_copy.coefficients = function.coefficients.value.copy()
+            b_spline_set_copy.functions[i] = function_copy
+
+        pickle.dump(b_spline_set_copy, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
     print('Complete import')
     return b_spline_set
-    # return b_splines
 
 def _parse_file_info(i, surf):
     #print(surf)

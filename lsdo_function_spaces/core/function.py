@@ -72,6 +72,7 @@ class Function:
         if coefficients is None:
             coefficients = self.coefficients
 
+
         basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
         # # values = basis_matrix @ coefficients
         if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
@@ -82,7 +83,7 @@ class Function:
                 coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
                 values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
         else:
-            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], -1))
+            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], np.prod(coefficients.shape)//basis_matrix.shape[1]))
 
         if parametric_coordinates.shape[0] == 1 or len(parametric_coordinates.shape) == 1:
             values = values[0]  # Get rid of the extra dimension if only one point is evaluated
@@ -662,8 +663,10 @@ class Function:
             if isinstance(color, Function):
                 if color.space.num_parametric_dimensions != 2:
                     raise ValueError("The color function must be 2D to plot as a surface.")
-                
                 color = color.evaluate(parametric_coordinates).value
+                if len(color.shape) > 1:
+                    if color.shape[1] > 1:
+                        color = np.linalg.norm(color, axis=1)
         elif point_type == 'coefficients':
             points = self.coefficients.value    # Do I need to reshape this?
 

@@ -12,21 +12,25 @@ NOTE: To implement a function space (for instance, B-splines), all that must be 
 '''
 
 
-@dataclass
 class FunctionSpace:
     '''
     Base class for function spaces. This class is used to evaluate functions at given coordinates, refit functions, and project points onto functions.
     '''
-    # num_physical_dimensions : int     # I might need this, but not using for now so don't have if not needed
-    # coefficients_shape : tuple    # Seems overly restrictive making things like transition elements and other unstructured functions impossible
-    #   -- It seems like we really only need the num_parametric_dimensions
-    num_parametric_dimensions : int   # This is really useful for the function methods
+    def __init__(self, num_parametric_dimensions:int, coefficients_shape:tuple):
+        """Base class for function spaces. This class is used to evaluate functions at given coordinates, refit functions, and project points onto functions.
 
-    def __post_init__(self):
-        '''
-        Initializes the function space.
-        '''
-        pass
+        Parameters
+        ----------
+        num_parametric_dimensions : int
+            Number of parametric dimensions of the function space.
+        coefficients_shape : tuple
+            Shape of the coefficients of the function space (will end up flattened).
+        """
+        # num_physical_dimensions : int     # I might need this, but not using for now so don't have if not needed
+        # coefficients_shape : tuple    # Seems overly restrictive making things like transition elements and other unstructured functions impossible
+        #   -- It seems like we really only need the num_parametric_dimensions
+        self.num_parametric_dimensions = num_parametric_dimensions # This is really useful for the function methods
+        self.coefficients_shape = coefficients_shape
 
 
     def generate_parametric_grid(self, grid_resolution:tuple) -> np.ndarray:
@@ -243,16 +247,20 @@ class FunctionSpace:
                 fitting_rhs = csdl.sparse.matvec(basis_matrix.T, values)
                 coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
         else:
-            fitting_rhs = basis_matrix.T.dot(values)
-            if sps.issparse(fitting_matrix):
-                coefficients = np.zeros((fitting_matrix.shape[0], fitting_rhs.shape[1]))
-                if len(fitting_rhs.shape) > 1:
-                    for i in range(fitting_rhs.shape[1]):
-                        coefficients[:,i] = spsl.spsolve(fitting_matrix, fitting_rhs[:,i])
-                else:
-                    coefficients = spsl.spsolve(fitting_matrix, fitting_rhs)
+            if isinstance(values, csdl.Variable):
+                fitting_rhs = basis_matrix.T @ values
+                coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
             else:
-                coefficients = np.linalg.solve(fitting_matrix, fitting_rhs)
+                fitting_rhs = basis_matrix.T.dot(values)
+                if sps.issparse(fitting_matrix):
+                    coefficients = np.zeros((fitting_matrix.shape[0], fitting_rhs.shape[1]))
+                    if len(fitting_rhs.shape) > 1:
+                        for i in range(fitting_rhs.shape[1]):
+                            coefficients[:,i] = spsl.spsolve(fitting_matrix, fitting_rhs[:,i])
+                    else:
+                        coefficients = spsl.spsolve(fitting_matrix, fitting_rhs)
+                else:
+                    coefficients = np.linalg.solve(fitting_matrix, fitting_rhs)
 
         return coefficients
         # raise NotImplementedError(f"Fit method must be implemented in {type(self)} class.")
