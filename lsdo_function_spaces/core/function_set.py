@@ -472,7 +472,7 @@ class FunctionSet:
             The indices of the functions to set the coefficients of. If None, all the functions are set to the coefficients.
         '''
         if function_indices is None:
-            function_indices = np.array([self.functions.keys()])
+            function_indices = np.array(list(self.functions.keys()))
 
         if len(coefficients) != len(function_indices):
             raise ValueError("The number of coefficients must match the number of functions to set. " +
