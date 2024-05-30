@@ -11,11 +11,8 @@ from pathlib import Path
 import string
 import random
 
-
-
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
-
 
 def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=None):
     # New approach - 2 stages: 
@@ -313,7 +310,7 @@ class FunctionSet:
         return new_function_set
 
 
-    def project(self, points:np.ndarray, num_workers:int=16, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
+    def project(self, points:np.ndarray, num_workers:int=None, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
@@ -339,6 +336,9 @@ class FunctionSet:
         plot : bool = False
             Whether or not to plot the projection.
         '''
+        if num_workers is None:
+            num_workers = lfs.num_workers
+
         if isinstance(points, csdl.Variable):
             points = points.value
         

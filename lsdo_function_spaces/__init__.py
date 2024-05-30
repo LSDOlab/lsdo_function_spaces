@@ -1,5 +1,6 @@
 __version__ = '0.1.4'
-
+import multiprocessing
+num_workers = multiprocessing.cpu_count()
 from lsdo_function_spaces.core.function import Function
 from lsdo_function_spaces.core.function_set import FunctionSet
 from lsdo_function_spaces.core.function_space import FunctionSpace
