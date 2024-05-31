@@ -114,7 +114,6 @@ def import_file(file_name:str, parallelize:bool=True) -> lfs.FunctionSet:
             knots = np.hstack((knots_u, knots_v))
             b_spline_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(order_u-1, order_v-1),
                                               coefficients_shape=coefficients_shape, knots=knots)
-            # NOTE: # Hardcoding 3 for num_physical_dimensions because this import is hardcoded for OpenVSP anyway
             b_spline_spaces[space_name] = b_spline_space
 
         b_splines_to_spaces_dict[parsed_info[0]] = space_name
@@ -275,10 +274,9 @@ def _build_b_splines(i, parsed_info_dict, point_table, b_spline_spaces, b_spline
     #         control_points_with_multiplicity[u_counter:u_counter_end, v_counter:v_counter_end, :] = cntrl_pts[j,k,:]
 
     b_spline_name = parsed_info_dict[f'surf{i}_name']
-    coefficients = cntrl_pts.reshape((-1,))
     b_spline_space = b_spline_spaces[b_splines_to_spaces_dict[b_spline_name]]
     num_physical_dimensions = cntrl_pts.shape[-1]
-    coefficients = coefficients.reshape((b_spline_space.coefficients_shape[0], b_spline_space.coefficients_shape[1], num_physical_dimensions))
+    coefficients = cntrl_pts.reshape((b_spline_space.coefficients_shape[0], b_spline_space.coefficients_shape[1], num_physical_dimensions))
     # print(f'Creating B-spline {b_spline_name}')
     # import csdl_alpha as csdl
     # print(csdl.manager)

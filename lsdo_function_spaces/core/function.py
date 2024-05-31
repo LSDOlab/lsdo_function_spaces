@@ -34,7 +34,10 @@ class Function:
         if isinstance(self.coefficients, np.ndarray):
             self.coefficients = csdl.Variable(value=self.coefficients)
 
-        self.num_physical_dimensions = self.coefficients.shape[-1]
+        if len(self.coefficients.shape) == 1:
+            self.num_physical_dimensions = 1
+        else:
+            self.num_physical_dimensions = self.coefficients.shape[-1]
 
 
     def _compute_distance_bounds(self, point, direction=None):
@@ -646,7 +649,7 @@ class Function:
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 25
+            num_points = 4
 
             # Generate meshgrid of parametric coordinates
             mesh_grid_input = []

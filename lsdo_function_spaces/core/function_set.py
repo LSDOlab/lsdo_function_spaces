@@ -125,7 +125,7 @@ class FunctionSet:
     space : lfs.FunctionSetSpace = None
         The function set space that the function set is from. If None (recommended), the function set space will be inferred from the functions.
     '''
-    functions: dict[lfs.Function]
+    functions: dict[int,lfs.Function]
     function_names : dict[str] = None
     name : str = None
     space : lfs.FunctionSetSpace = None
