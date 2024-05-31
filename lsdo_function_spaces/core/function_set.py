@@ -388,7 +388,6 @@ class FunctionSet:
                                                         force_reprojection)
         if isinstance(output, list):
             parametric_coordinates = output
-            print(parametric_coordinates)
             if plot:
                 projection_results = self.evaluate(parametric_coordinates).value
                 plotting_elements = []
