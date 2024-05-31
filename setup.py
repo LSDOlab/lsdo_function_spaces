@@ -35,6 +35,7 @@ setup(
     python_requires='>=3.7',
     platforms=['any'],
     install_requires=[
+        'cython==0.29.28',
         'numpy',
         'pytest',
         'myst-nb',
@@ -53,6 +54,9 @@ setup(
         'vedo',
         'joblib',
         'pandas',
+        'scipy',
+        'csdl_alpha @ git+https://github.com/LSDOlab/CSDL_alpha.git',
+        'lsdo_b_splines_cython @ git+https://github.com/LSDOlab/lsdo_b_splines_cython.git'
     ],
     classifiers=[
         'Programming Language :: Python',
