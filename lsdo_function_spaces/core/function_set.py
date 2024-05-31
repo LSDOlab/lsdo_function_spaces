@@ -1,11 +1,10 @@
 from __future__ import annotations
-
 from dataclasses import dataclass
 import csdl_alpha as csdl
 import numpy as np
 import scipy.sparse as sps
 import concurrent.futures
-
+import itertools
 import pickle
 from pathlib import Path
 import string
@@ -34,70 +33,105 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
         options = global_options
 
     direction = options['direction']
+    extrema = options['extrema']
 
     for point in chunk:
-
-        if direction is None:
-            lower_bounds = {i: function._compute_distance_bounds(point) for i, function in functions.items()}
-            sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: lower_bounds[x])
-
+        if extrema:
+            n = list(functions.values())[0].space.num_parametric_dimensions
+            extrema_parametric = np.array(list(itertools.product([0., 1.], repeat=n)))
+            function_extrema_dict = {i: function.evaluate(extrema_parametric).value for i, function in functions.items()}
+            
+            best_surface = None
+            best_coord = None
+            best_error = None
+            for i, function_extrema in function_extrema_dict.items():
+                for j in range(function_extrema.shape[0]):
+                    extrema_point = function_extrema[j]
+                    parametric_coordinate = extrema_parametric[j]
+                    if direction is None:
+                        error = np.linalg.norm(extrema_point - point)
+                        if best_error is None or error < best_error:
+                            best_surface = i
+                            best_coord = parametric_coordinate
+                            best_error = error
+                    else:
+                        displacement = (point - extrema_point).reshape((-1,))
+                        error = (np.dot(displacement, direction), np.linalg.norm(displacement))
+                        if best_error is None:
+                            best_surface = i
+                            best_coord = parametric_coordinate
+                            best_error = error
+                        elif error[0] < best_error[0]:
+                            best_surface = i
+                            best_coord = parametric_coordinate
+                            best_error = error
+                        elif error[0] < best_error[0]*(1 + 1e-6) and error[1] < best_error[1]:
+                            best_surface = i
+                            best_coord = parametric_coordinate
+                            best_error = error 
+            results.append((best_surface, best_coord))
         else:
-            lower_bounds = {i: function._compute_distance_bounds(point, direction=direction) for i, function in functions.items()}
-            distance_bounds = {i: function._compute_distance_bounds(point) for i, function in functions.items()}
-            sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: (lower_bounds[x], distance_bounds[x]))
-
-        # project onto the first surface
-        best_surface = sorted_surfaces[0]
-        function = functions[best_surface]
-        best_coord = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
-                                      max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
-        projections_performed += 1
-        direction = options['direction']
-        if direction is None:
-            best_error = np.linalg.norm(function.evaluate(best_coord, coefficients=function.coefficients.value) - point)
-        else:
-            function_value = function.evaluate(best_coord, coefficients=function.coefficients.value)
-            displacement = (point - function_value).reshape((-1,))
-            best_error = (np.dot(displacement, direction), np.linalg.norm(displacement)) # (directed distance, total distance)
-
-        for name in sorted_surfaces:
-            function = functions[name]
-            bound = lower_bounds[name]
-            # TODO: TEMPORARY DISABLING THE BREAK BECAUSE I'M RUNNING INTO AN ERROR WHEN I HAVE A SPARSE SET OF COEFFICIENTS
             if direction is None:
-                if bound > best_error:
-                    projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
-                    break
+                lower_bounds = {i: function._compute_distance_bounds(point) for i, function in functions.items()}
+                sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: lower_bounds[x])
+
             else:
-                if bound > best_error[1]:
-                    projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
-                    break
-                if bound*(1 + 1e-6) > best_error[0]: # TODO: make the 1e-6 a parameter
-                    if distance_bounds[name] > best_error[1]:
+                lower_bounds = {i: function._compute_distance_bounds(point, direction=direction) for i, function in functions.items()}
+                distance_bounds = {i: function._compute_distance_bounds(point) for i, function in functions.items()}
+                sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: (lower_bounds[x], distance_bounds[x]))
+
+            # project onto the first surface
+            best_surface = sorted_surfaces[0]
+            function = functions[best_surface]
+            best_coord = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
+                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
+            projections_performed += 1
+            direction = options['direction']
+            if direction is None:
+                best_error = np.linalg.norm(function.evaluate(best_coord, coefficients=function.coefficients.value) - point)
+            else:
+                function_value = function.evaluate(best_coord, coefficients=function.coefficients.value)
+                displacement = (point - function_value).reshape((-1,))
+                best_error = (np.dot(displacement, direction), np.linalg.norm(displacement)) # (directed distance, total distance)
+
+            for name in sorted_surfaces:
+                function = functions[name]
+                bound = lower_bounds[name]
+                # TODO: TEMPORARY DISABLING THE BREAK BECAUSE I'M RUNNING INTO AN ERROR WHEN I HAVE A SPARSE SET OF COEFFICIENTS
+                if direction is None:
+                    if bound > best_error:
                         projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
                         break
-            parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
-                                                     max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
-            projections_performed += 1
-            if direction is None:
-                error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
-                if error < best_error:
-                    best_surface = name
-                    best_coord = parametric_coordinate
-                    best_error = error
-            else:
-                function_value = function.evaluate(parametric_coordinate, coefficients=function.coefficients.value)
-                displacement = (point - function_value).reshape((-1,))
-                error = (np.dot(displacement, direction), np.linalg.norm(displacement))
-                if error[0] < best_error[0]:
-                    best_surface = name
-                    best_coord = parametric_coordinate
-                    best_error = error
-                elif error[0] < best_error[0]*(1 + 1e-6) and error[1] < best_error[1]:
-                    best_surface = name
-                    best_coord = parametric_coordinate
-                    best_error = error 
-        results.append((best_surface, best_coord))
+                else:
+                    if bound > best_error[1]:
+                        projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
+                        break
+                    if bound*(1 + 1e-6) > best_error[0]: # TODO: make the 1e-6 a parameter
+                        if distance_bounds[name] > best_error[1]:
+                            projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
+                            break
+                parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
+                                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
+                projections_performed += 1
+                if direction is None:
+                    error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
+                    if error < best_error:
+                        best_surface = name
+                        best_coord = parametric_coordinate
+                        best_error = error
+                else:
+                    function_value = function.evaluate(parametric_coordinate, coefficients=function.coefficients.value)
+                    displacement = (point - function_value).reshape((-1,))
+                    error = (np.dot(displacement, direction), np.linalg.norm(displacement))
+                    if error[0] < best_error[0]:
+                        best_surface = name
+                        best_coord = parametric_coordinate
+                        best_error = error
+                    elif error[0] < best_error[0]*(1 + 1e-6) and error[1] < best_error[1]:
+                        best_surface = name
+                        best_coord = parametric_coordinate
+                        best_error = error 
+            results.append((best_surface, best_coord))
 
     # print(f"Projections performed: {projections_performed}")
     # print(f"Projections skipped: {projections_skipped}")
@@ -311,7 +345,7 @@ class FunctionSet:
 
 
     def project(self, points:np.ndarray, num_workers:int=None, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
-                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False) -> csdl.Variable:
+                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, extrema=False, force_reprojection=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -335,6 +369,10 @@ class FunctionSet:
             The tolerance for the Newton iterations.
         plot : bool = False
             Whether or not to plot the projection.
+        extrema : bool = False
+            Whether or not to project onto the extrema of the function.
+        force_reprojection : bool = False
+            Whether or not to force the projection to be recomputed.
         '''
         if num_workers is None:
             num_workers = lfs.num_workers
@@ -343,11 +381,14 @@ class FunctionSet:
             points = points.value
         
         output = self._check_whether_to_load_projection(points, direction, 
-                                                                        grid_search_density_parameter, 
-                                                                        max_newton_iterations, 
-                                                                        newton_tolerance)
+                                                        grid_search_density_parameter, 
+                                                        max_newton_iterations, 
+                                                        newton_tolerance,
+                                                        extrema,
+                                                        force_reprojection)
         if isinstance(output, list):
             parametric_coordinates = output
+            print(parametric_coordinates)
             if plot:
                 projection_results = self.evaluate(parametric_coordinates).value
                 plotting_elements = []
@@ -361,7 +402,8 @@ class FunctionSet:
             
 
         options = {'direction': direction, 'grid_search_density_parameter': grid_search_density_parameter,
-                     'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance}
+                   'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance,
+                   'extrema': extrema}
         
 
 
@@ -419,7 +461,8 @@ class FunctionSet:
 
 
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
-                                         max_newton_iterations:int=100, newton_tolerance:float=1e-6) -> bool:
+                                          max_newton_iterations:int=100, newton_tolerance:float=1e-6, extrema:bool=False, 
+                                          force_reprojection:bool=False) -> bool:
         name_space = f'{self.name}'
 
         name_space = ''
@@ -436,7 +479,7 @@ class FunctionSet:
             # else:
             name_space += f'_{str(coefficients)}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
         
-        long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}'
+        long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}_{extrema}'
 
         projections_folder = 'stored_files/projections'
         name_space_file_path = projections_folder + '/name_space_dict.pickle'
@@ -449,7 +492,7 @@ class FunctionSet:
             Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
             name_space_dict = {}
 
-        if long_name_space in name_space_dict.keys():
+        if long_name_space in name_space_dict.keys() and not force_reprojection:
             short_name_space = name_space_dict[long_name_space]
             saved_projections_file = projections_folder + f'/{short_name_space}.pickle'
             with open(saved_projections_file, 'rb') as handle:
