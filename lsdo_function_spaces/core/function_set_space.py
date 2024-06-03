@@ -216,7 +216,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
                 coefficients[i] = space.fit(values=function_values, parametric_coordinates=parametric_coordinates_per_function[i],
                                             parametric_derivative_orders=None, regularization_parameter=regularization_parameter)
             else:
-                print(f"No data was provided for function {i}.")
+                # print(f"No data was provided for function {i}.")
                 # Kind of hacky way to get size of coefficients
                 parametric_coordinate = space.generate_parametric_grid(grid_resolution=(1,1))[0]
                 basis_vector = space.compute_basis_matrix(parametric_coordinates=parametric_coordinate)
