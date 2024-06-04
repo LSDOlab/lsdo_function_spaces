@@ -5,6 +5,10 @@ import csdl_alpha as csdl
 import numpy as np
 import scipy.sparse as sps
 
+import pickle
+from pathlib import Path
+import string
+import random
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
@@ -177,7 +181,7 @@ class Function:
 
 
     def project(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
-                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False) -> csdl.Variable:
+                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, force_reproject:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -202,6 +206,23 @@ class Function:
         plot : bool = False
             Whether or not to plot the projection.
         '''
+        output = self._check_whether_to_load_projection(points, direction, 
+                                                        grid_search_density_parameter, 
+                                                        max_newton_iterations, 
+                                                        newton_tolerance,
+                                                        force_reproject)
+        if isinstance(output, np.ndarray):
+            parametric_coordinates = output
+            if plot:
+                projection_results = self.evaluate(parametric_coordinates).value
+                plotting_elements = []
+                plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
+                plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
+                self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
+            return parametric_coordinates
+        else:
+            name_space_dict, long_name_space = output
+
         num_physical_dimensions = points.shape[-1]
 
         points = points.reshape((-1, num_physical_dimensions))
@@ -216,26 +237,50 @@ class Function:
         parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
         # Evaluate grid of points
         grid_search_values = self.evaluate(parametric_grid_search, coefficients=self.coefficients.value)
-        points_expanded = np.repeat(points[:,np.newaxis,:], grid_search_values.shape[0], axis=1)
-        grid_search_displacements = grid_search_values - points_expanded
-        grid_search_distances = np.linalg.norm(grid_search_displacements, axis=2)
+        expanded_points_size = points.shape[0]*grid_search_values.shape[0]
+        cutoff_size = 2.e8
+        if expanded_points_size > cutoff_size:
+            # grid search sections of points at a time
+            num_sections = int(np.ceil(expanded_points_size/cutoff_size))
+            section_size = int(np.ceil(points.shape[0]/num_sections))
+            closest_point_indices = np.zeros((points.shape[0],), dtype=int)
+            for i in range(num_sections):
+                start_index = i*section_size
+                end_index = min((i+1)*section_size, points.shape[0])
+                points_expanded = np.repeat(points[start_index:end_index,np.newaxis,:], grid_search_values.shape[0], axis=1)
+                grid_search_displacements = grid_search_values - points_expanded
+                grid_search_distances = np.linalg.norm(grid_search_displacements, axis=2)
 
-        # Perform a grid search
-        if direction is None:
-            # If no direction is provided, the projection will find the points on the function that are closest to the points to project.
-            # The grid search will be used to find the initial guess for the Newton iterations
+                # Perform a grid search
+                if direction is None:
+                    closest_point_indices[start_index:end_index] = np.argmin(grid_search_distances, axis=1)
+                else:
+                    rho = 1e-3
+                    grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
+                    grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
+                    closest_point_indices[start_index:end_index] = np.argmin(grid_search_distances_from_axis_squared, axis=1)
             
-            # Find closest point on function to each point to project
-            # closest_point_indices = np.argmin(np.linalg.norm(grid_search_values - points, axis=1))
-            closest_point_indices = np.argmin(grid_search_distances, axis=1)
-
         else:
-            # If a direction is provided, the projection will find the points on the function that are closest to the axis defined by the direction.
-            # The grid search will be used to find the initial guess for the Newton iterations
-            rho = 1e-3
-            grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
-            grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
-            closest_point_indices = np.argmin(grid_search_distances_from_axis_squared, axis=1)
+            points_expanded = np.repeat(points[:,np.newaxis,:], grid_search_values.shape[0], axis=1)
+            grid_search_displacements = grid_search_values - points_expanded
+            grid_search_distances = np.linalg.norm(grid_search_displacements, axis=2)
+
+            # Perform a grid search
+            if direction is None:
+                # If no direction is provided, the projection will find the points on the function that are closest to the points to project.
+                # The grid search will be used to find the initial guess for the Newton iterations
+                
+                # Find closest point on function to each point to project
+                # closest_point_indices = np.argmin(np.linalg.norm(grid_search_values - points, axis=1))
+                closest_point_indices = np.argmin(grid_search_distances, axis=1)
+
+            else:
+                # If a direction is provided, the projection will find the points on the function that are closest to the axis defined by the direction.
+                # The grid search will be used to find the initial guess for the Newton iterations
+                rho = 1e-3
+                grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
+                grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
+                closest_point_indices = np.argmin(grid_search_distances_from_axis_squared, axis=1)
 
         # Use the parametric coordinate corresponding to each closest point as the initial guess for the Newton iterations
         initial_guess = parametric_grid_search[closest_point_indices]
@@ -410,7 +455,6 @@ class Function:
             # If any of the coordinates are outside the bounds, set them to the bounds
             current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
 
-
         if plot:
             projection_results = self.evaluate(current_guess).value
             plotting_elements = []
@@ -418,14 +462,66 @@ class Function:
             plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
             self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
 
+        # Save the projection
+        characters = string.ascii_letters + string.digits  # Alphanumeric characters
+        # Generate a random string of the specified length
+        random_string = ''.join(random.choice(characters) for _ in range(6))
+        projections_folder = 'stored_files/projections'
+        name_space_file_path = projections_folder + '/name_space_dict.pickle'
+        name_space_dict[long_name_space] = random_string
+        with open(name_space_file_path, 'wb+') as handle:
+            pickle.dump(name_space_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        with open(projections_folder + f'/{random_string}.pickle', 'wb+') as handle:
+            pickle.dump(current_guess, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
         return current_guess
 
 
-
-
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
-                                         max_newton_iterations:int=100, newton_tolerance:float=1e-6) -> bool:
-        pass
+                                         max_newton_iterations:int=100, newton_tolerance:float=1e-6, force_reproject:bool=False) -> bool:
+        # name_space = f'{self.name}'
+
+        # name_space = ''
+        # for function in self.functions.values():
+        #     function_space = function.space
+
+        #     coefficients = function.coefficients.value
+        #     degree = function_space.degree
+        #     coeff_shape = function_space.coefficients_shape
+        #     knot_vectors_norm = round(np.linalg.norm(function_space.knots), 2)
+
+        #     # if f'{target}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}' in name_space:
+        #     #     pass
+        #     # else:
+        #     name_space += f'_{str(coefficients)}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
+
+        knot_vectors_norm = round(np.linalg.norm(self.space.knots), 2)
+        function_info = f'{self.name}_{self.coefficients.value}_{self.space.degree}_{knot_vectors_norm}'
+        projection_info = f'{points}_{direction}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}'
+        long_name_space = f'{function_info}_{projection_info}'
+
+        projections_folder = 'stored_files/projections'
+        name_space_file_path = projections_folder + '/name_space_dict.pickle'
+        
+        name_space_dict_file_path = Path(name_space_file_path)
+        if name_space_dict_file_path.is_file():
+            with open(name_space_file_path, 'rb') as handle:
+                name_space_dict = pickle.load(handle)
+        else:
+            Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
+            name_space_dict = {}
+
+        if long_name_space in name_space_dict.keys() and not force_reproject:
+            short_name_space = name_space_dict[long_name_space]
+            saved_projections_file = projections_folder + f'/{short_name_space}.pickle'
+            with open(saved_projections_file, 'rb') as handle:
+                parametric_coordinates = pickle.load(handle)
+                return parametric_coordinates
+        else:
+            Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
+
+            return name_space_dict, long_name_space
 
 
     def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
@@ -526,8 +622,7 @@ class Function:
             The Vedo plotting elements that were plotted.
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
-
-
+        raise NotImplementedError("This function is not implemented yet.")
 
 
     def plot_curve(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet',
