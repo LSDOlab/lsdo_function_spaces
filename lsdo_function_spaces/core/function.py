@@ -90,12 +90,19 @@ class Function:
                 coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
                 values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
         else:
-            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], np.prod(coefficients.shape)//basis_matrix.shape[1]))
+            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], self.num_physical_dimensions))
 
-        if parametric_coordinates.shape[0] == 1 or len(parametric_coordinates.shape) == 1:
+        if len(parametric_coordinates.shape) == 1:
+            pass    # Come back to this case
+
+        values = values.reshape(parametric_coordinates.shape[:-1] + (self.num_physical_dimensions,))
+
+        if values.shape[0] == 1:
             values = values[0]  # Get rid of the extra dimension if only one point is evaluated
-        if values.shape[-1] == 1:
-            values = values.flatten()   # Get rid of the extra dimension if only one physical dimension is evaluated
+        if values.shape[-1] == 1 and len(values.shape) > 1:
+            values = values.reshape(values.shape[:-1])   # Get rid of the extra dimension if only one physical dimension is evaluated
+        elif values.shape[-1] == 1:
+            values = values[0]
         
             # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
         # elif isinstance(coefficients, csdl.Variable):
@@ -206,6 +213,9 @@ class Function:
         plot : bool = False
             Whether or not to plot the projection.
         '''
+        if isinstance(points, csdl.Variable):
+            points = points.value
+
         output = self._check_whether_to_load_projection(points, direction, 
                                                         grid_search_density_parameter, 
                                                         max_newton_iterations, 
@@ -236,9 +246,9 @@ class Function:
         # Generate parametric grid
         parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
         # Evaluate grid of points
-        grid_search_values = self.evaluate(parametric_grid_search, coefficients=self.coefficients.value)
+        grid_search_values = self.evaluate(parametric_coordinates=parametric_grid_search, coefficients=self.coefficients.value)
         expanded_points_size = points.shape[0]*grid_search_values.shape[0]
-        cutoff_size = 2.e8
+        cutoff_size = 1.5e8
         if expanded_points_size > cutoff_size:
             # grid search sections of points at a time
             num_sections = int(np.ceil(expanded_points_size/cutoff_size))
@@ -357,7 +367,7 @@ class Function:
         points_left_to_converge = np.arange(points.shape[0])
         for j in range(max_newton_iterations):
             # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
-            function_values = self.evaluate(current_guess[points_left_to_converge], coefficients=self.coefficients.value)
+            function_values = self.evaluate(parametric_coordinates=current_guess[points_left_to_converge], coefficients=self.coefficients.value)
             displacements = (points[points_left_to_converge] - function_values).reshape(points_left_to_converge.shape[0], num_physical_dimensions)
             
             d_displacement_d_parametric = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, self.space.num_parametric_dimensions))
@@ -459,7 +469,7 @@ class Function:
             projection_results = self.evaluate(current_guess).value
             plotting_elements = []
             plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
-            plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
+            plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
             self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
 
         # Save the projection
@@ -866,7 +876,7 @@ class Function:
             
             points = []
             for parametric_coordinate_set in parametric_coordinates:
-                points.append(self.evaluate(parametric_coordinate_set).value.reshape((num_points,num_points,-1)))
+                points.append(self.evaluate(parametric_coordinates=parametric_coordinate_set).value.reshape((num_points,num_points,-1)))
 
             plotting_colors = []
             if isinstance(color, Function):
@@ -874,7 +884,7 @@ class Function:
                     raise ValueError("The color function must be 3D to plot as a volume.")
                 
                 for parametric_coordinate_set in parametric_coordinates:
-                    plotting_colors.append(color.evaluate(parametric_coordinate_set).value)
+                    plotting_colors.append(color.evaluate(parametric_coordinates=parametric_coordinate_set).value)
                 color = plotting_colors
 
         elif point_type == 'coefficients':
