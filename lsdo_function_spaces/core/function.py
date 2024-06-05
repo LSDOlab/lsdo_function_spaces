@@ -265,6 +265,7 @@ class Function:
                 if direction is None:
                     closest_point_indices[start_index:end_index] = np.argmin(grid_search_distances, axis=1)
                 else:
+                    direction = direction/np.linalg.norm(direction)
                     rho = 1e-3
                     grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
                     grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
@@ -287,6 +288,7 @@ class Function:
             else:
                 # If a direction is provided, the projection will find the points on the function that are closest to the axis defined by the direction.
                 # The grid search will be used to find the initial guess for the Newton iterations
+                direction = direction/np.linalg.norm(direction)
                 rho = 1e-3
                 grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
                 grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2

@@ -32,7 +32,7 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
     if options is None:
         options = global_options
 
-    direction = options['direction']
+    direction = options['direction']/np.linalg.norm(options['direction']) if options['direction'] is not None else None
     extrema = options['extrema']
 
     for point in chunk:
@@ -56,12 +56,8 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
                             best_error = error
                     else:
                         displacement = (point - extrema_point).reshape((-1,))
-                        error = (np.dot(displacement, direction), np.linalg.norm(displacement))
+                        error = (np.linalg.norm(np.cross(displacement, direction)), np.linalg.norm(displacement))
                         if best_error is None:
-                            best_surface = i
-                            best_coord = parametric_coordinate
-                            best_error = error
-                        elif error[0] < best_error[0]:
                             best_surface = i
                             best_coord = parametric_coordinate
                             best_error = error
@@ -86,13 +82,13 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
             best_coord = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
                                         max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
             projections_performed += 1
-            direction = options['direction']
+
             if direction is None:
                 best_error = np.linalg.norm(function.evaluate(best_coord, coefficients=function.coefficients.value) - point)
             else:
                 function_value = function.evaluate(best_coord, coefficients=function.coefficients.value)
                 displacement = (point - function_value).reshape((-1,))
-                best_error = (np.dot(displacement, direction), np.linalg.norm(displacement)) # (directed distance, total distance)
+                best_error = (np.linalg.norm(np.cross(displacement, direction)), np.linalg.norm(displacement)) # (directed distance, total distance)
 
             for name in sorted_surfaces:
                 function = functions[name]
@@ -103,13 +99,9 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
                         projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
                         break
                 else:
-                    if bound > best_error[1]:
+                    if bound > best_error[0]:
                         projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
                         break
-                    if bound*(1 + 1e-6) > best_error[0]: # TODO: make the 1e-6 a parameter
-                        if distance_bounds[name] > best_error[1]:
-                            projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
-                            break
                 parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
                                                         max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
                 projections_performed += 1
@@ -122,12 +114,9 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
                 else:
                     function_value = function.evaluate(parametric_coordinate, coefficients=function.coefficients.value)
                     displacement = (point - function_value).reshape((-1,))
-                    error = (np.dot(displacement, direction), np.linalg.norm(displacement))
-                    if error[0] < best_error[0]:
-                        best_surface = name
-                        best_coord = parametric_coordinate
-                        best_error = error
-                    elif error[0] < best_error[0]*(1 + 1e-6) and error[1] < best_error[1]:
+                    error = (np.linalg.norm(np.cross(displacement, direction)), np.linalg.norm(displacement))
+                    # TODO: make the 1e-6 a parameter
+                    if error[0] < best_error[0]*(1 + 1e-6) and error[1] < best_error[1]:
                         best_surface = name
                         best_coord = parametric_coordinate
                         best_error = error 
