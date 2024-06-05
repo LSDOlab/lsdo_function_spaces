@@ -83,15 +83,14 @@ class BSplineSpace(FunctionSpace):
             If None, the basis matrix will not be expanded.
         '''
         if len(parametric_coordinates.shape) == 1:
-            parametric_coordinates = parametric_coordinates.reshape((1, -1))
+            parametric_coordinates = parametric_coordinates.reshape((-1, self.num_parametric_dimensions))
+        elif len(parametric_coordinates.shape) > 2:
+            parametric_coordinates = parametric_coordinates.reshape((-1, self.num_parametric_dimensions))
+
 
         if expansion_factor is None:
             expansion_factor = 1
 
-        # if len(parametric_coordinates.shape) == 1:
-        #     num_points = parametric_coordinates.shape[0]
-        #     num_parametric_dimensions = 1
-        # else:
         num_points = np.prod(parametric_coordinates.shape[:-1])
         num_parametric_dimensions = parametric_coordinates.shape[-1]
 
@@ -338,7 +337,7 @@ def test_multiple_surfaces():
     my_b_spline_surface_set = lfs.FunctionSet(functions=[b_spline1, b_spline2], function_names=['b_spline1', 'b_spline2'])
 
 
-    num_points = 50
+    num_points = 10000
     x_coordinates = np.random.rand(num_points)
     y_coordinates = np.random.rand(num_points)
     z_coordinates = np.zeros((num_points,))
@@ -364,6 +363,6 @@ def test_multiple_surfaces():
     # plotter.show(new_b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
 
 
-# if __name__ == '__main__':
-#     test_single_surface()
-#     test_multiple_surfaces()
+if __name__ == '__main__':
+    test_single_surface()
+    test_multiple_surfaces()

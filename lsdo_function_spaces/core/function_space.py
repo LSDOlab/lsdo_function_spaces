@@ -266,7 +266,7 @@ class FunctionSpace:
         # raise NotImplementedError(f"Fit method must be implemented in {type(self)} class.")
 
     def fit_function(self, values:np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
-            basis_matrix:Union[sps.csc_matrix, np.ndarray]=None, regularization_parameter:float=None) -> csdl.Variable:
+            basis_matrix:Union[sps.csc_matrix, np.ndarray]=None, regularization_parameter:float=None) -> lfs.Function:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
         parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
