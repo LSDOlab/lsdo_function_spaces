@@ -756,7 +756,7 @@ class Function:
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 4
+            num_points = 25
 
             # Generate meshgrid of parametric coordinates
             mesh_grid_input = []
