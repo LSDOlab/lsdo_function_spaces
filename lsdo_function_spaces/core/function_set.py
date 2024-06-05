@@ -80,7 +80,7 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
             best_surface = sorted_surfaces[0]
             function = functions[best_surface]
             best_coord = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
-                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
+                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'], do_pickles=False)
             projections_performed += 1
 
             if direction is None:
@@ -103,7 +103,7 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
                         projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
                         break
                 parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
-                                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'])
+                                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'], do_pickles=False)
                 projections_performed += 1
                 if direction is None:
                     error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)

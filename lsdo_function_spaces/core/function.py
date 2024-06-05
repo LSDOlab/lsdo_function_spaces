@@ -188,7 +188,7 @@ class Function:
 
 
     def project(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
-                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, force_reproject:bool=False) -> csdl.Variable:
+                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, force_reproject:bool=False, do_pickles=True) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -216,22 +216,23 @@ class Function:
         if isinstance(points, csdl.Variable):
             points = points.value
 
-        output = self._check_whether_to_load_projection(points, direction, 
-                                                        grid_search_density_parameter, 
-                                                        max_newton_iterations, 
-                                                        newton_tolerance,
-                                                        force_reproject)
-        if isinstance(output, np.ndarray):
-            parametric_coordinates = output
-            if plot:
-                projection_results = self.evaluate(parametric_coordinates).value
-                plotting_elements = []
-                plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
-                plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
-                self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
-            return parametric_coordinates
-        else:
-            name_space_dict, long_name_space = output
+        if do_pickles:
+            output = self._check_whether_to_load_projection(points, direction, 
+                                                            grid_search_density_parameter, 
+                                                            max_newton_iterations, 
+                                                            newton_tolerance,
+                                                            force_reproject)
+            if isinstance(output, np.ndarray):
+                parametric_coordinates = output
+                if plot:
+                    projection_results = self.evaluate(parametric_coordinates).value
+                    plotting_elements = []
+                    plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
+                    plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
+                    self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
+                return parametric_coordinates
+            else:
+                name_space_dict, long_name_space = output
 
         num_physical_dimensions = points.shape[-1]
 
@@ -474,18 +475,19 @@ class Function:
             plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
             self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
 
-        # Save the projection
-        characters = string.ascii_letters + string.digits  # Alphanumeric characters
-        # Generate a random string of the specified length
-        random_string = ''.join(random.choice(characters) for _ in range(6))
-        projections_folder = 'stored_files/projections'
-        name_space_file_path = projections_folder + '/name_space_dict.pickle'
-        name_space_dict[long_name_space] = random_string
-        with open(name_space_file_path, 'wb+') as handle:
-            pickle.dump(name_space_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        if do_pickles:
+            # Save the projection
+            characters = string.ascii_letters + string.digits  # Alphanumeric characters
+            # Generate a random string of the specified length
+            random_string = ''.join(random.choice(characters) for _ in range(6))
+            projections_folder = 'stored_files/projections'
+            name_space_file_path = projections_folder + '/name_space_dict.pickle'
+            name_space_dict[long_name_space] = random_string
+            with open(name_space_file_path, 'wb+') as handle:
+                pickle.dump(name_space_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        with open(projections_folder + f'/{random_string}.pickle', 'wb+') as handle:
-            pickle.dump(current_guess, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            with open(projections_folder + f'/{random_string}.pickle', 'wb+') as handle:
+                pickle.dump(current_guess, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return current_guess
 
