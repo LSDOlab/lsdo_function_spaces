@@ -198,7 +198,8 @@ class FunctionSetSpace(lfs.FunctionSpace):
 
         for i, parametric_coordinate in enumerate(parametric_coordinates):
             index, parametric_coordinate = parametric_coordinate
-            values_per_function[index].append(values[i,:])
+            # values_per_function[index].append(values[i,:])
+            values_per_function[index].append(i)
             parametric_coordinates_per_function[index].append(parametric_coordinate)
             if parametric_derivative_orders is not None:
                 parametric_derivative_orders_per_function[index].append(parametric_derivative_orders[i])
@@ -206,13 +207,15 @@ class FunctionSetSpace(lfs.FunctionSpace):
         for i, space in self.spaces.items():
             if len(values_per_function[i]) > 0:
                 parametric_coordinates_per_function[i] = np.vstack(parametric_coordinates_per_function[i])
-
+                
         # Fit each function in the set
         coefficients = {}
         for i, space in self.spaces.items():
             if len(values_per_function[i]) > 0:
-                if isinstance(values, csdl.Variable):
-                    function_values = csdl.blockmat([[value.reshape((1, value.shape[0]))] for value in values_per_function[i]])
+                # if isinstance(values, csdl.Variable):
+                #     function_values = csdl.blockmat([[value.reshape((1, value.shape[0]))] for value in values_per_function[i]])
+                function_values = values[values_per_function[i]]
+                print("function_values", function_values, function_values.shape)
                 coefficients[i] = space.fit(values=function_values, parametric_coordinates=parametric_coordinates_per_function[i],
                                             parametric_derivative_orders=None, regularization_parameter=regularization_parameter)
             else:
