@@ -207,7 +207,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
         for i, space in self.spaces.items():
             if len(values_per_function[i]) > 0:
                 parametric_coordinates_per_function[i] = np.vstack(parametric_coordinates_per_function[i])
-                
+
         # Fit each function in the set
         coefficients = {}
         for i, space in self.spaces.items():
@@ -215,7 +215,6 @@ class FunctionSetSpace(lfs.FunctionSpace):
                 # if isinstance(values, csdl.Variable):
                 #     function_values = csdl.blockmat([[value.reshape((1, value.shape[0]))] for value in values_per_function[i]])
                 function_values = values[values_per_function[i]]
-                print("function_values", function_values, function_values.shape)
                 coefficients[i] = space.fit(values=function_values, parametric_coordinates=parametric_coordinates_per_function[i],
                                             parametric_derivative_orders=None, regularization_parameter=regularization_parameter)
             else:
