@@ -55,7 +55,7 @@ class Function:
 
 
     def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
-                 plot:bool=False) -> csdl.Variable:
+                 plot:bool=False, non_csdl:bool=False) -> csdl.Variable:
         '''
         Evaluates the function.
 
@@ -69,7 +69,8 @@ class Function:
             The coefficients of the function.
         plot : bool = False
             Whether or not to plot the function with the points from the result of the evaluation.
-        
+        non_csdl : bool = False
+            If true, will run numpy computations instead of csdl computations, and return a numpy array.
 
         Returns
         -------
@@ -79,15 +80,18 @@ class Function:
         if coefficients is None:
             coefficients = self.coefficients
 
+        if non_csdl and isinstance(coefficients, csdl.Variable):
+            coefficients = coefficients.value
 
         basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
         # # values = basis_matrix @ coefficients
         if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
-            coefficients_reshaped = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
+            if coefficients.shape != (basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]):
+                coefficients = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
             # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
-            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients_reshaped.shape[1])))
-            for i in range(coefficients_reshaped.shape[1]):
-                coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
+            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients.shape[1])))
+            for i in csdl.frange(coefficients.shape[1]):
+                coefficients_column = coefficients[:,i].reshape((coefficients.shape[0],1))
                 values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
         else:
             values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], self.num_physical_dimensions))
@@ -95,7 +99,8 @@ class Function:
         if len(parametric_coordinates.shape) == 1:
             pass    # Come back to this case
 
-        values = values.reshape(parametric_coordinates.shape[:-1] + (self.num_physical_dimensions,))
+        if values.shape != parametric_coordinates.shape[:-1] + (self.num_physical_dimensions,):
+            values = values.reshape(parametric_coordinates.shape[:-1] + (self.num_physical_dimensions,))
 
         if values.shape[0] == 1:
             values = values[0]  # Get rid of the extra dimension if only one point is evaluated

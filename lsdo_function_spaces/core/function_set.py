@@ -203,7 +203,7 @@ class FunctionSet:
             
 
     def evaluate(self, parametric_coordinates:list[tuple[int, np.ndarray]], parametric_derivative_orders:list[tuple]=None,
-                 plot:bool=False) -> csdl.Variable:
+                 plot:bool=False, non_csdl:bool=False) -> csdl.Variable:
         '''
         Evaluates the function.
 
@@ -217,7 +217,8 @@ class FunctionSet:
             The order of the parametric derivatives to evaluate. If None, the function itself is evaluated.
         plot : bool = False
             Whether or not to plot the function with the points from the result of the evaluation.
-        
+                non_csdl : bool = False
+            If true, will run numpy computations instead of csdl computations, and return a numpy array.
 
         Returns
         -------
@@ -245,17 +246,23 @@ class FunctionSet:
                 para_derivs = None
             if len(indices) > 0:
                 function_values_list.append(function.evaluate(parametric_coordinates=para_coords,
-                                                     parametric_derivative_orders=para_derivs))
+                                                     parametric_derivative_orders=para_derivs,
+                                                     non_csdl=non_csdl))
                 functions_with_points.append(i)
 
         # Arrange the function values back into the correct element of the array
         if len(function_values_list) == 0:
             raise ValueError("No points were evaluated.")
         if self.functions[functions_with_points[0]].num_physical_dimensions == 1:
-            function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates),)))
-
+            if non_csdl:
+                function_values = np.zeros((len(parametric_coordinates),))
+            else:
+                function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates),)))
         else:
-            function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates), function_values_list[0].shape[-1])))
+            if non_csdl:
+                function_values = np.zeros((len(parametric_coordinates), function_values_list[0].shape[-1]))
+            else:
+                function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates), function_values_list[0].shape[-1])))
         for i, function_value in enumerate(function_values_list):
             indices = (np.array(function_indices) == functions_with_points[i]).nonzero()[0].tolist()
             # indices = list(np.where(np.array(function_indices) == i)[0])
@@ -266,7 +273,10 @@ class FunctionSet:
             else:
                 if function_value.shape[0] == 1:
                     function_value = function_value.reshape((function_value.size,))
-                function_values = function_values.set(csdl.slice[indices], function_value)
+                if non_csdl:
+                    function_values[indices] = function_value
+                else:
+                    function_values = function_values.set(csdl.slice[indices], function_value)
 
         if plot:
             # Plot the function
