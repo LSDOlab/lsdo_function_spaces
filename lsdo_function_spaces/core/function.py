@@ -609,7 +609,6 @@ class Function:
             #     if show:
             #         lfs.show_plot(plotting_elements=plotting_elements, title='B-Spline Set Plot')
             #     return plotting_elements
-
         return plotting_elements
 
 
@@ -781,6 +780,8 @@ class Function:
                 if color.space.num_parametric_dimensions != 2:
                     raise ValueError("The color function must be 2D to plot as a surface.")
                 color = color.evaluate(parametric_coordinates).value
+                color_max = np.max(color)
+                color_min = np.min(color)
                 if len(color.shape) > 1:
                     if color.shape[1] > 1:
                         color = np.linalg.norm(color, axis=1)
@@ -823,7 +824,8 @@ class Function:
                 pf.show_plot(plotting_elements, title=self.name, axes=1, interactive=True)
             else:
                 pf.show_plot(plotting_elements, title="Surface", axes=1, interactive=True)
-
+        if isinstance(color, Function):
+            return plotting_elements, color_min, color_max
         return plotting_elements
     
 

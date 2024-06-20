@@ -12,6 +12,9 @@ import random
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
+import vedo.addons
+import vedo.colors
+import vedo.colors
 
 def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=None):
     # New approach - 2 stages: 
@@ -282,7 +285,11 @@ class FunctionSet:
             # Plot the function
             plotting_elements = self.plot(opacity=0.8, show=False)
             # Plot the evaluated points
-            lfs.plot_points(function_values.value, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
+            if non_csdl:
+                value = function_values
+            else:
+                value = function_values.value
+            lfs.plot_points(value, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
 
         return function_values
     
@@ -632,9 +639,12 @@ class FunctionSet:
         plotting_elements : list
             The Vedo plotting elements that were plotted.
         '''
+        import vedo
 
         # Then there must be a discrete index so loop over subfunctions and plot them
         plotting_elements = additional_plotting_elements.copy()
+        color_min = None
+        color_max = None
         for i, function in self.functions.items():
             if isinstance(color, lfs.FunctionSet):
                 function_color = color.functions[i]
@@ -643,8 +653,20 @@ class FunctionSet:
             plotting_elements = function.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=function_color, color_map=color_map,
                                                surface_texture=surface_texture, line_width=line_width,
                                                additional_plotting_elements=plotting_elements, show=False)
+            if isinstance(plotting_elements, tuple):
+                plotting_elements = plotting_elements[0]
+                if color_min is None:
+                    color_min = plotting_elements[1]
+                    color_max = plotting_elements[2]
+                else:
+                    color_min = min(color_min, plotting_elements[1])
+                    color_max = max(color_max, plotting_elements[2])
         if isinstance(color, lfs.FunctionSet):
-            plotting_elements[-1].add_scalarbar()
+            # plot some invisible points to get the scalar bar
+            element = vedo.Points(np.zeros((2,3))).opacity(0)
+            element.cmap(color_map, [color_min, color_max])
+            plotting_elements.append(element)
+            scalarbar = plotting_elements[-1].add_scalarbar()
         if show:
             if self.name is not None:
                 lfs.show_plot(plotting_elements=plotting_elements, title=self.name)
