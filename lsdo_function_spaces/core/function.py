@@ -588,9 +588,15 @@ class Function:
                                        line_width=line_width, additional_plotting_elements=plotting_elements, show=show)
             
             elif self.space.num_parametric_dimensions == 2:
-                plotting_elements = self.plot_surface(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+                out = self.plot_surface(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
                                         surface_texture=surface_texture, line_width=line_width,
                                         additional_plotting_elements=plotting_elements, show=show)
+                if isinstance(out, tuple):
+                    plotting_elements = out[0]
+                    cmin = out[1]
+                    cmax = out[2]
+                else:
+                    plotting_elements = out
             elif self.space.num_parametric_dimensions == 3:
                 plotting_elements = self.plot_volume(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
                                         surface_texture=surface_texture, line_width=line_width,
@@ -609,6 +615,8 @@ class Function:
             #     if show:
             #         lfs.show_plot(plotting_elements=plotting_elements, title='B-Spline Set Plot')
             #     return plotting_elements
+        if isinstance(color, Function):
+            return plotting_elements, cmin, cmax
         return plotting_elements
 
 
@@ -759,6 +767,7 @@ class Function:
             raise ValueError("This function is not a surface and cannot be plotted as one.")
 
         plotting_elements = additional_plotting_elements.copy()
+        color_is_function = False
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
@@ -777,6 +786,7 @@ class Function:
             points = function_values
 
             if isinstance(color, Function):
+                color_is_function = True
                 if color.space.num_parametric_dimensions != 2:
                     raise ValueError("The color function must be 2D to plot as a surface.")
                 color = color.evaluate(parametric_coordinates).value
@@ -824,7 +834,7 @@ class Function:
                 pf.show_plot(plotting_elements, title=self.name, axes=1, interactive=True)
             else:
                 pf.show_plot(plotting_elements, title="Surface", axes=1, interactive=True)
-        if isinstance(color, Function):
+        if color_is_function:
             return plotting_elements, color_min, color_max
         return plotting_elements
     

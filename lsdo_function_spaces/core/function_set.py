@@ -650,20 +650,23 @@ class FunctionSet:
                 function_color = color.functions[i]
             else:    
                 function_color = color
-            plotting_elements = function.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=function_color, color_map=color_map,
+            out = function.plot(point_types=point_types, plot_types=plot_types, opacity=opacity, color=function_color, color_map=color_map,
                                                surface_texture=surface_texture, line_width=line_width,
                                                additional_plotting_elements=plotting_elements, show=False)
-            if isinstance(plotting_elements, tuple):
-                plotting_elements = plotting_elements[0]
+            if isinstance(out, tuple):
+                plotting_elements = out[0]
                 if color_min is None:
-                    color_min = plotting_elements[1]
-                    color_max = plotting_elements[2]
+                    color_min = out[1]
+                    color_max = out[2]
                 else:
-                    color_min = min(color_min, plotting_elements[1])
-                    color_max = max(color_max, plotting_elements[2])
+                    color_min = min(color_min, out[1])
+                    color_max = max(color_max, out[2])
+            else:
+                plotting_elements = out
         if isinstance(color, lfs.FunctionSet):
             # plot some invisible points to get the scalar bar
             element = vedo.Points(np.zeros((2,3))).opacity(0)
+            print('Color values', color_min, color_max)
             element.cmap(color_map, [color_min, color_max])
             plotting_elements.append(element)
             scalarbar = plotting_elements[-1].add_scalarbar()
