@@ -122,8 +122,8 @@ class FunctionSpace:
         raise NotImplementedError(f"Compute evaluation matrix method must be implemented in {type(self)} class.")
     
 
-    def compute_fitting_matrix(self):
-        pass
+    def compute_fitting_map(self):
+        raise NotImplementedError(f"Compute fitting map method must be implemented in {type(self)} class.")
     
 
     # def refit(self, coefficients:csdl.Variable, grid_resolution:tuple=None, parametric_coordinates:np.ndarray=None, 
@@ -223,10 +223,10 @@ class FunctionSpace:
             values = values.reshape((-1, values.shape[-1]))
 
         if parametric_coordinates is not None:
-            if hasattr(self, 'compute_fitting_map'):
+            try:
                 fitting_map = self.compute_fitting_map(parametric_coordinates)
                 return fitting_map @ values
-            else:
+            except NotImplementedError:
                 basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
                 fitting_matrix = basis_matrix.T.dot(basis_matrix)
                 

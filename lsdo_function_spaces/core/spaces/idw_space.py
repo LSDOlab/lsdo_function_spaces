@@ -49,9 +49,9 @@ class IDWFunctionSpace(FunctionSpace):
             if isinstance(self.grid_size, int):
                 self.grid_size = (self.grid_size,)*num_parametric_dimensions
             linspaces = [np.linspace(0, 1, n) for n in self.grid_size]
-            self.points = np.array(np.meshgrid(*linspaces)).T.reshape(-1, len(linspaces))
+            self.points = np.array(np.meshgrid(*linspaces)).T.reshape(-1, num_parametric_dimensions)
 
-        super().__init__(num_parametric_dimensions, (self.points.shape[0],))
+        super().__init__(num_parametric_dimensions, self.points.shape[0])
         
 
     def compute_basis_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders: np.ndarray=None, expansion_factor:int=None) -> np.ndarray:
@@ -122,6 +122,7 @@ class IDWFunctionSpace(FunctionSpace):
         """
         if parametric_derivative_orders is not None:
             raise NotImplementedError('IDWFunctionSpace does not support derivatives')
+        parametric_coordinates = parametric_coordinates.reshape(-1, self.num_parametric_dimensions)
         if self.conserve:
             dist = cdist(parametric_coordinates, self.points)
             with np.errstate(divide='ignore', invalid='ignore'):
@@ -130,9 +131,37 @@ class IDWFunctionSpace(FunctionSpace):
                 weights /= weights.sum(axis=0)
             np.nan_to_num(weights, copy=False, nan=1.)
         else:
-            raise NotImplementedError()
+            dist = cdist(parametric_coordinates, self.points)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                weights = 1.0/dist**self.order
+                weights /= weights.sum(axis=0)
+                weights = weights.T
+            np.nan_to_num(weights, copy=False, nan=1.)
+            # raise NotImplementedError()
         return weights
     
 
 def test_idw_space():
-    space = IDWFunctionSpace(4, 2, grid_size=4)
+    import numpy as np
+    import csdl_alpha as csdl
+    
+    rec = csdl.Recorder(inline=True)
+    rec.start()
+
+    space = IDWFunctionSpace(2, 2, grid_size=4)
+    parametric_coordinates = np.random.rand(10, 2)
+    data = 10*np.random.rand(10, 1)
+    function = space.fit_function(data, parametric_coordinates)
+    eval_data = function.evaluate(parametric_coordinates)
+
+    space = IDWFunctionSpace(2, 2, grid_size=4, conserve=False)
+    parametric_coordinates = np.random.rand(10, 2)
+    data = 10*np.random.rand(10, 1)
+    function = space.fit_function(data, parametric_coordinates)
+    eval_data = function.evaluate(parametric_coordinates)
+    # print(eval_data.value - data)
+
+    # print(function.coefficients.value)
+
+if __name__ == '__main__':
+    test_idw_space()
