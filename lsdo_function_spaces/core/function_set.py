@@ -397,10 +397,10 @@ class FunctionSet:
             if plot:
                 projection_results = self.evaluate(parametric_coordinates).value
                 plotting_elements = []
-                plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
+                plotting_elements.append(lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False))
                 # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
-                plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
-                self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
+                plotting_elements.append(lfs.plot_points(projection_results, color='#ff0000', size=5, show=False))
+                self.plot(opacity=0.3, additional_plotting_elements=plotting_elements, show=True)
             return parametric_coordinates
         else:
             name_space_dict, long_name_space = output
@@ -456,10 +456,10 @@ class FunctionSet:
         if plot:
             projection_results = self.evaluate(parametric_coordinates).value
             plotting_elements = []
-            plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
+            plotting_elements.append(lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False))
             # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
-            plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
-            self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
+            plotting_elements.append(lfs.plot_points(projection_results, color='#ff0000', size=5, show=False))
+            self.plot(opacity=0.3, additional_plotting_elements=plotting_elements, show=True)
 
         return parametric_coordinates
 
@@ -551,7 +551,7 @@ class FunctionSet:
         return function_indices
     
 
-    def search_for_function_indices(self, search_strings:list[str]) -> list[int]:
+    def search_for_function_indices(self, search_strings:list[str], ignore_names:list[str]) -> list[int]:
         '''
         Searches for the indices of the functions in the function set with the given search string.
 
@@ -570,13 +570,12 @@ class FunctionSet:
 
         function_indices = []
         for i, function_name in self.function_names.items():
-            for search_string in search_strings:
-                if search_string in function_name:
-                    function_indices.append(i)
+            if any(s in function_name for s in search_strings) and not any(s in function_name for s in ignore_names):
+                function_indices.append(i)
         return function_indices
     
 
-    def create_subset(self, function_indices:list[int]=None, function_search_names:list[str]=None, name:str=None) -> lfs.FunctionSet:
+    def create_subset(self, function_indices:list[int]=None, function_search_names:list[str]=None, ignore_names:list[str]=None, name:str=None) -> lfs.FunctionSet:
         '''
         Creates a subset of the function set with the given indices. Either the function indices or the function search names must be provided.
 
@@ -597,7 +596,7 @@ class FunctionSet:
         if function_indices is None:
             function_indices = []
         if function_search_names is not None:
-            function_indices += self.search_for_function_indices(search_strings=function_search_names)
+            function_indices += self.search_for_function_indices(search_strings=function_search_names, ignore_names=ignore_names)
         
         # Remove duplicates
         function_indices = list(set(function_indices))
