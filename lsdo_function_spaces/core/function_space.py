@@ -122,7 +122,7 @@ class FunctionSpace:
         raise NotImplementedError(f"Compute evaluation matrix method must be implemented in {type(self)} class.")
     
 
-    def compute_fitting_map(self):
+    def compute_fitting_map(self, parametric_coordinates):
         raise NotImplementedError(f"Compute fitting map method must be implemented in {type(self)} class.")
     
 
