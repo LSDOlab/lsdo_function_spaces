@@ -551,7 +551,7 @@ class FunctionSet:
         return function_indices
     
 
-    def search_for_function_indices(self, search_strings:list[str], ignore_names:list[str]) -> list[int]:
+    def search_for_function_indices(self, search_strings:list[str], ignore_names:list[str]=[]) -> list[int]:
         '''
         Searches for the indices of the functions in the function set with the given search string.
 
@@ -575,7 +575,7 @@ class FunctionSet:
         return function_indices
     
 
-    def create_subset(self, function_indices:list[int]=None, function_search_names:list[str]=None, ignore_names:list[str]=None, name:str=None) -> lfs.FunctionSet:
+    def create_subset(self, function_indices:list[int]=None, function_search_names:list[str]=None, ignore_names:list[str]=[], name:str=None) -> lfs.FunctionSet:
         '''
         Creates a subset of the function set with the given indices. Either the function indices or the function search names must be provided.
 
