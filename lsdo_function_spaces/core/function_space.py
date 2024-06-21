@@ -245,7 +245,7 @@ class FunctionSpace:
                     # NOTE:  # CASTING FITTING MATRIX TO DENSE BECAUSE CSDL DOESN'T HAVE SPARSE SOLVE YET
             else:
                 fitting_rhs = csdl.sparse.matvec(basis_matrix.T, values)
-                coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
+                coefficients = csdl.solve_linear(fitting_matrix.toarray(), fitting_rhs)
         else:
             if isinstance(values, csdl.Variable):
                 fitting_rhs = basis_matrix.T @ values
