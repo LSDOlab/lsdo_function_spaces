@@ -606,6 +606,54 @@ class FunctionSet:
         subset = lfs.FunctionSet(functions=functions, function_names=function_names, name=name)
         return subset
 
+    def plot_but_good(self, opacity:float=1., color="777777", color_map:str='jet', surface_texture:str="", show:bool=True, grid_n=25):
+        '''
+        Plots the function set.
+
+        Parameters
+        -----------
+        opactity : float = 1.
+            The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
+        color : lfs.FunctionSet = None
+            The FunctionSet to use to color the B-spline as.
+        color_map : str = 'jet'
+            The color map to use if the color is a function.
+        surface_texture : str = ""
+            The surface texture to determine how light bounces off the surface.
+            See 
+
+        '''
+        import vedo
+        from lsdo_function_spaces.utils.plotting_functions import get_surface_mesh
+
+        vertices = []
+        faces = []
+        c_points = None
+        for ind, function in self.functions.items():
+            if isinstance(color, lfs.FunctionSet):
+                function_color = color.functions[ind]
+                fn_vertices, fn_faces, fn_c_points = get_surface_mesh(surface=function, color=function_color, grid_n=grid_n, offset=len(vertices))
+                if c_points is None:
+                    c_points = fn_c_points
+                else:
+                    c_points = np.hstack((c_points, fn_c_points))
+            else:
+                fn_vertices, fn_faces = get_surface_mesh(surface=function, grid_n=grid_n, offset=len(vertices))
+            vertices.extend(fn_vertices)
+            faces.extend(fn_faces)
+
+        mesh = vedo.Mesh([vertices, faces]).opacity(opacity).lighting(surface_texture)
+
+        if c_points is not None:
+            mesh.cmap(color_map, c_points)
+            mesh.add_scalarbar()
+        else:
+            mesh.color(color)
+
+        if show:
+            vedo.show(mesh)
+        return mesh
+
 
     def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
               opacity:float=1., color:str|lfs.FunctionSet='#00629B', color_map:str='jet', surface_texture:str="",
