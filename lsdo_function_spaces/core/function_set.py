@@ -203,7 +203,36 @@ class FunctionSet:
         functions = {i:function.copy() for i, function in self.functions.items()}
         function_set = lfs.FunctionSet(functions=functions, function_names=self.function_names, name=self.name)
         return function_set
-            
+
+    def evaluate_normals(self, parametric_coordinates:list[tuple[int, np.ndarray]], plot:bool=False) -> csdl.Variable:
+        '''
+        Evaluates the normals of the function set at the given parametric coordinates.
+
+        Parameters
+        ----------
+        parametric_coordinates : list[tuple[int, np.ndarray]] -- list length=num_points, tuple_length=2
+            The coordinates at which to evaluate the function. The list elements correspond to the coordinate of each point.
+            The tuple elements correspond to the index of the function and the parametric coordinates for that point.
+
+        Returns
+        -------
+        normals : csdl.Variable
+            The normals of the function set at the given coordinates.
+        '''
+        u_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(1,0))
+        v_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(0,1))
+        normals = csdl.cross(u_vectors, v_vectors, axis=1)
+        normals = normals / csdl.expand(csdl.norm(normals, axes=(1,)), (normals.shape), action='i->ij')
+        if plot:
+            import vedo
+            import lsdo_function_spaces as lfs
+            points = self.evaluate(parametric_coordinates, non_csdl=True)
+            plotting_elements = self.plot(opacity=0.8, show=False)
+            varrows = vedo.Arrows(points, points+normals.value, c='black')
+            plotting_elements.append(varrows)
+            lfs.show_plot(plotting_elements, 'normals')
+        return normals
+
 
     def evaluate(self, parametric_coordinates:list[tuple[int, np.ndarray]], parametric_derivative_orders:list[tuple]=None,
                  plot:bool=False, non_csdl:bool=False) -> csdl.Variable:
@@ -244,7 +273,7 @@ class FunctionSet:
             indices = np.where(np.array(function_indices) == i)[0]
             para_coords = np.array([function_parametric_coordinates[j] for j in indices]).reshape(-1, function.space.num_parametric_dimensions)
             if parametric_derivative_orders is not None:
-                para_derivs = [parametric_derivative_orders[j] for j in indices]
+                para_derivs = parametric_derivative_orders
             else:
                 para_derivs = None
             if len(indices) > 0:
