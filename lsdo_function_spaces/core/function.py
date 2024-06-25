@@ -244,16 +244,22 @@ class Function:
         points = points.reshape((-1, num_physical_dimensions))
 
         # grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
-        grid_search_resolution = self.space._generate_projection_grid_search_resolution(grid_search_density_parameter)
-        if grid_search_resolution is None:
-            grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
-        # grid_search_resolution = 100
+        if not hasattr(self, '_grid_searches'):
+            self._grid_searches = {}
+        if grid_search_density_parameter not in self._grid_searches:
+            grid_search_resolution = self.space._generate_projection_grid_search_resolution(grid_search_density_parameter)
+            if grid_search_resolution is None:
+                grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
+            # grid_search_resolution = 100
 
-        # Generate parametric grid
-        parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
-        # Evaluate grid of points
-        grid_search_values = self.evaluate(parametric_coordinates=parametric_grid_search, coefficients=self.coefficients.value)
-        expanded_points_size = points.shape[0]*grid_search_values.shape[0]
+            # Generate parametric grid
+            parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
+            # Evaluate grid of points
+            grid_search_values = self.evaluate(parametric_coordinates=parametric_grid_search, coefficients=self.coefficients.value)
+            expanded_points_size = points.shape[0]*grid_search_values.shape[0]
+            self._grid_searches[grid_search_density_parameter] = (parametric_grid_search, grid_search_values, expanded_points_size)
+        else:
+            parametric_grid_search, grid_search_values, expanded_points_size = self._grid_searches[grid_search_density_parameter]
         cutoff_size = 1.5e8
         if expanded_points_size > cutoff_size:
             # grid search sections of points at a time
