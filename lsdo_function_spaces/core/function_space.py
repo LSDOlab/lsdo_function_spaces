@@ -221,6 +221,8 @@ class FunctionSpace:
 
         if len(values.shape) > 2:
             values = values.reshape((-1, values.shape[-1]))
+        elif len(values.shape) == 1:
+            values = values.reshape((1, -1))
 
         if parametric_coordinates is not None:
             try:

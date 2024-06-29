@@ -125,6 +125,37 @@ class Function:
 
         return values
     
+    def integrate(self, area, grid_n=10):
+        # Generate parametric grid
+        # parametric_grid = self.space.generate_parametric_grid(grid_n)
+        parametric_grid = np.zeros((grid_n, grid_n, 2))
+        for i in range(grid_n):
+            for j in range(grid_n):
+                parametric_grid[i,j] = np.array([i/(grid_n-1), j/(grid_n-1)])
+
+        # print('parametric grid shape', parametric_grid.shape)
+        # parametric_grid = parametric_grid.reshape(grid_n, grid_n, -1)        
+
+        # Get the parametric coordinates of the grid center points
+        grid_centers = np.zeros((grid_n-1, grid_n-1, self.space.num_parametric_dimensions))
+        for i in range(grid_n-1):
+            for j in range(grid_n-1):
+                grid_centers[i,j] = (parametric_grid[i+1, j] + parametric_grid[i, j] + parametric_grid[i, j+1] + parametric_grid[i+1, j+1])/4
+        # Evaluate grid of points
+        grid_values = area.evaluate(parametric_coordinates=parametric_grid.reshape(-1,2)).reshape((grid_n, grid_n, -1))
+        grid_center_values = self.evaluate(parametric_coordinates=grid_centers.reshape(-1,2)).reshape((grid_n-1, grid_n-1, self.num_physical_dimensions))
+
+        values = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1)))
+        for i in csdl.frange(grid_n-1):
+            for j in csdl.frange(grid_n-1):
+                # Compute the area of the quadrilateral
+                area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]))/2
+                area_2 = csdl.norm(csdl.cross(grid_values[i,j+1]-grid_values[i+1,j+1], grid_values[i+1,j]-grid_values[i+1,j+1]))/2
+                area = area_1 + area_2
+
+                values = values.set(csdl.slice[i,j], grid_center_values[i,j]*area)
+
+        return values.reshape((-1, self.num_physical_dimensions)), grid_centers.reshape(-1, self.space.num_parametric_dimensions)
 
     def refit(self, new_function_space:lfs.FunctionSpace, grid_resolution:tuple=None, 
               parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,

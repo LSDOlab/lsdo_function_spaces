@@ -35,6 +35,9 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
     if options is None:
         options = global_options
 
+    priority_inds = options['priority_inds']
+    priority_eps = options['priority_eps']
+
     direction = options['direction']/np.linalg.norm(options['direction']) if options['direction'] is not None else None
     extrema = options['extrema']
 
@@ -110,6 +113,8 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
                 projections_performed += 1
                 if direction is None:
                     error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
+                    if name in priority_inds:
+                        error = error - priority_eps
                     if error < best_error:
                         best_surface = name
                         best_coord = parametric_coordinate
@@ -118,6 +123,9 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
                     function_value = function.evaluate(parametric_coordinate, coefficients=function.coefficients.value)
                     displacement = (point - function_value).reshape((-1,))
                     error = (np.linalg.norm(np.cross(displacement, direction)), np.linalg.norm(displacement))
+                    if name in priority_inds:
+                        error[0] = error[0] - priority_eps
+                        error[1] = error[1] - priority_eps
                     # TODO: make the 1e-6 a parameter
                     if error[0] < best_error[0]*(1 + 1e-6) and error[1] < best_error[1]:
                         best_surface = name
@@ -222,13 +230,15 @@ class FunctionSet:
         u_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(1,0))
         v_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(0,1))
         normals = csdl.cross(u_vectors, v_vectors, axis=1)
-        normals = normals / csdl.expand(csdl.norm(normals, axes=(1,)), (normals.shape), action='i->ij')
+        normals = normals / (csdl.expand(csdl.norm(normals, axes=(1,)), (normals.shape), action='i->ij') + 1e-12)
+
         if plot:
             import vedo
             import lsdo_function_spaces as lfs
+            scale = 1e-1
             points = self.evaluate(parametric_coordinates, non_csdl=True)
             plotting_elements = self.plot(opacity=0.8, show=False)
-            varrows = vedo.Arrows(points, points+normals.value, c='black')
+            varrows = vedo.Arrows(points, points+scale*normals.value, c='black')
             plotting_elements.append(varrows)
             lfs.show_plot(plotting_elements, 'normals')
         return normals
@@ -322,6 +332,19 @@ class FunctionSet:
 
         return function_values
     
+    def integrate(self, area, grid_n=10):
+        parametric_coordinates = []
+        values = []
+        # TODO: frange?
+        for i, function in self.functions.items():
+            value, coords = function.integrate(area.functions[i], grid_n=grid_n)
+            for j in range(len(coords)):
+                parametric_coordinates.append((i,coords[j]))
+            if len(value.shape) == 1:
+                value = value.reshape((-1,1))
+            values.append(value)
+        values = csdl.vstack(values)
+        return values, parametric_coordinates
 
     def refit(self, new_function_spaces:dict[lfs.FunctionSpace]|lfs.FunctionSpace, indices_of_functions_to_refit:list[int]=None, 
               grid_resolution:tuple=None,  parametric_coordinates:dict[tuple[int,np.ndarray]]=None,
@@ -380,7 +403,8 @@ class FunctionSet:
 
 
     def project(self, points:np.ndarray, num_workers:int=None, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
-                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, extrema=False, force_reprojection=False) -> csdl.Variable:
+                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, extrema=False, force_reprojection=False,
+                priority_inds=None, priority_eps=1e-3) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -420,6 +444,7 @@ class FunctionSet:
                                                         max_newton_iterations, 
                                                         newton_tolerance,
                                                         extrema,
+                                                        priority_inds, priority_eps,
                                                         force_reprojection)
         if isinstance(output, list):
             parametric_coordinates = output
@@ -434,10 +459,12 @@ class FunctionSet:
         else:
             name_space_dict, long_name_space = output
             
+        if priority_inds is None:
+            priority_inds = []
 
         options = {'direction': direction, 'grid_search_density_parameter': grid_search_density_parameter,
                    'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance,
-                   'extrema': extrema}
+                   'extrema': extrema, 'priority_inds': priority_inds, 'priority_eps': priority_eps}
         
 
 
@@ -496,6 +523,7 @@ class FunctionSet:
 
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
                                           max_newton_iterations:int=100, newton_tolerance:float=1e-6, extrema:bool=False, 
+                                          priority_inds=None, priority_eps=1e-3,
                                           force_reprojection:bool=False) -> bool:
         name_space = f'{self.name}'
 
@@ -513,7 +541,7 @@ class FunctionSet:
             # else:
             name_space += f'_{str(coefficients)}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
         
-        long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}_{extrema}'
+        long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}_{extrema}_{priority_inds}_{priority_eps}'
 
         projections_folder = 'stored_files/projections'
         name_space_file_path = projections_folder + '/name_space_dict.pickle'
@@ -680,7 +708,8 @@ class FunctionSet:
             mesh.color(color)
 
         if show:
-            vedo.show(mesh)
+            plotter = vedo.Plotter()
+            plotter.show(mesh)
         return mesh
 
 
