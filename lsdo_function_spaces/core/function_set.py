@@ -332,11 +332,14 @@ class FunctionSet:
 
         return function_values
     
-    def integrate(self, area, grid_n=10):
+    def integrate(self, area, grid_n=10, indices=None):
+        if indices is None:
+            indices = list(self.functions)
         parametric_coordinates = []
         values = []
         # TODO: frange?
-        for i, function in self.functions.items():
+        for i in indices:
+            function = self.functions[i]
             value, coords = function.integrate(area.functions[i], grid_n=grid_n)
             for j in range(len(coords)):
                 parametric_coordinates.append((i,coords[j]))
