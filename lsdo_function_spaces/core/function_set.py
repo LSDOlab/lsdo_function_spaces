@@ -12,9 +12,6 @@ import random
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
-import vedo.addons
-import vedo.colors
-import vedo.colors
 
 def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=None):
     # New approach - 2 stages: 
