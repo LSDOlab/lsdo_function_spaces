@@ -1,6 +1,6 @@
 
 
-import vedo
+
 import numpy as np
 from typing import Union
 
@@ -21,6 +21,7 @@ def show_plot(plotting_elements:list, title:str, axes:bool=True, view_up:str="z"
     interactive : bool = True
         A boolean on whether the plot is interactive or not.
     '''
+    import vedo
     plotter = vedo.Plotter()
     plotter.show(plotting_elements, title, axes=axes, viewup=view_up, interactive=interactive)
 
@@ -47,6 +48,7 @@ def plot_points(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray
     show : bool = True
         A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is still returned.
     '''
+    import vedo
 
     plotting_elements = additional_plotting_elements.copy()
 
@@ -95,6 +97,7 @@ def plot_curve(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray]
     show : bool
         A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
     '''
+    import vedo
     # NOTE: The function object performs the evaluation(s) to get the points (and colors if applicable) and then these functions do the vedo.
     
     plotting_elements = additional_plotting_elements.copy()
@@ -156,7 +159,7 @@ def plot_surface(points:np.ndarray, plot_types:list=['function'], opacity:float=
     show : bool
         A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
     '''
-    
+    import vedo
     plotting_elements = additional_plotting_elements.copy()
 
     num_plot_u = points.shape[0]
