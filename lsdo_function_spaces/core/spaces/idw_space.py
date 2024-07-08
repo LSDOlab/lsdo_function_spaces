@@ -51,7 +51,7 @@ class IDWFunctionSpace(FunctionSpace):
             linspaces = [np.linspace(0, 1, n) for n in self.grid_size]
             self.points = np.array(np.meshgrid(*linspaces)).T.reshape(-1, num_parametric_dimensions)
 
-        super().__init__(num_parametric_dimensions, self.points.shape[0])
+        super().__init__(num_parametric_dimensions, (self.points.shape[0],))
         
 
     def compute_basis_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders: np.ndarray=None, expansion_factor:int=None) -> np.ndarray:
