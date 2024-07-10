@@ -53,6 +53,42 @@ class Function:
         '''
         return lfs.Function(space=self.space, coefficients=self.coefficients, name=self.name)
 
+    def get_matrix_vector(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
+                 non_csdl:bool=False):
+        '''
+        Gets the basis matrix and coefficients whose product is the function evaluated at the given coordinates.
+
+        Parameters
+        ----------
+        parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
+            The coordinates at which to evaluate the function.
+        parametric_derivative_order : tuple = None -- shape=(num_points,num_parametric_dimensions)
+            The order of the parametric derivatives to evaluate.
+        coefficients : csdl.Variable = None -- shape=coefficients_shape
+            The coefficients of the function.
+        plot : bool = False
+            Whether or not to plot the function with the points from the result of the evaluation.
+        non_csdl : bool = False
+            If true, will run numpy computations instead of csdl computations, and return a numpy array.
+
+        Returns
+        -------
+        basis_matrix : np.ndarray | sps.csr_matrix
+            The basis matrix evaluated at the given coordinates.
+        coefficients : csdl.Variable
+            The coefficients of the function.
+        '''
+        if coefficients is None:
+            coefficients = self.coefficients
+
+        if non_csdl and isinstance(coefficients, csdl.Variable):
+            coefficients = coefficients.value
+
+        basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
+        if coefficients.shape != (basis_matrix.shape[1], self.num_physical_dimensions):
+            coefficients = coefficients.reshape((basis_matrix.shape[1], self.num_physical_dimensions))
+
+        return basis_matrix, coefficients
 
     def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
                  plot:bool=False, non_csdl:bool=False) -> csdl.Variable:
@@ -808,7 +844,7 @@ class Function:
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 25
+            num_points = 100
 
             # Generate meshgrid of parametric coordinates
             mesh_grid_input = []

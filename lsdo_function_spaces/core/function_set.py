@@ -240,7 +240,6 @@ class FunctionSet:
             lfs.show_plot(plotting_elements, 'normals')
         return normals
 
-
     def evaluate(self, parametric_coordinates:list[tuple[int, np.ndarray]], parametric_derivative_orders:list[tuple]=None,
                  plot:bool=False, non_csdl:bool=False) -> csdl.Variable:
         '''
@@ -274,48 +273,46 @@ class FunctionSet:
             function_parametric_coordinates.append(coordinates)
 
         # Evaluate each function at the given coordinates
-        function_values_list = []
-        functions_with_points = []
+        basis_matrices = []
+        coeff_vectors = []
+        reorder_indices = []
         for i, function in self.functions.items():
-            indices = np.where(np.array(function_indices) == i)[0]
+            indices = [j for j in range(len(function_indices)) if function_indices[j] == i]
+            if len(indices) == 0:
+                continue
+            reorder_indices += indices
             para_coords = np.array([function_parametric_coordinates[j] for j in indices]).reshape(-1, function.space.num_parametric_dimensions)
             if parametric_derivative_orders is not None:
                 para_derivs = parametric_derivative_orders
             else:
                 para_derivs = None
-            if len(indices) > 0:
-                function_values_list.append(function.evaluate(parametric_coordinates=para_coords,
-                                                     parametric_derivative_orders=para_derivs,
-                                                     non_csdl=non_csdl))
-                functions_with_points.append(i)
+            basis_matrix, coefficients = function.get_matrix_vector(parametric_coordinates=para_coords,
+                                                                    parametric_derivative_orders=para_derivs,
+                                                                    non_csdl=non_csdl)
+            basis_matrices.append(basis_matrix)
+            coeff_vectors.append(coefficients)
 
-        # Arrange the function values back into the correct element of the array
-        if len(function_values_list) == 0:
+        basis_matrix = sps.block_diag(basis_matrices, format='csr')
+        if len(coeff_vectors) == 0:
             raise ValueError("No points were evaluated.")
-        if self.functions[functions_with_points[0]].num_physical_dimensions == 1:
-            if non_csdl:
-                function_values = np.zeros((len(parametric_coordinates),))
-            else:
-                function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates),)))
+        elif len(coeff_vectors) == 1:
+            coeff_vector = coeff_vectors[0]
         else:
             if non_csdl:
-                function_values = np.zeros((len(parametric_coordinates), function_values_list[0].shape[-1]))
+                coeff_vector = np.vstack(coeff_vectors)
             else:
-                function_values = csdl.Variable(value=np.zeros((len(parametric_coordinates), function_values_list[0].shape[-1])))
-        for i, function_value in enumerate(function_values_list):
-            indices = (np.array(function_indices) == functions_with_points[i]).nonzero()[0].tolist()
-            # indices = list(np.where(np.array(function_indices) == i)[0])
-            if len(indices) == 0:
-                continue
-            if len(indices) == function_values.shape[0]:
-                function_values = function_value
-            else:
-                if function_value.shape[0] == 1:
-                    function_value = function_value.reshape((function_value.size,))
-                if non_csdl:
-                    function_values[indices] = function_value
-                else:
-                    function_values = function_values.set(csdl.slice[indices], function_value)
+                coeff_vector = csdl.vstack(coeff_vectors)
+
+        if non_csdl:
+            values = basis_matrix @ coeff_vector
+        else:
+            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coeff_vector.shape[1])))
+            for i in csdl.frange(coeff_vector.shape[1]):
+                coefficients_column = coeff_vector[:,i].reshape((coeff_vector.shape[0],1))
+                values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
+
+        indices_reorder = np.argsort(reorder_indices).tolist()
+        function_values = values[indices_reorder]
 
         if plot:
             # Plot the function
@@ -326,6 +323,10 @@ class FunctionSet:
             else:
                 value = function_values.value
             lfs.plot_points(value, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
+
+        if not len(function_values.shape) == 1:
+            if np.prod(function_values.shape) == function_values.shape[1] or np.prod(function_values.shape) == function_values.shape[0]:
+                function_values = function_values.reshape((-1,))
 
         return function_values
     
