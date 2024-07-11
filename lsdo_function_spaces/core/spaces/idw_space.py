@@ -45,6 +45,8 @@ class IDWFunctionSpace(FunctionSpace):
 
         if n_neighbors is not None and conserve:
             raise ValueError('IDWFunctionSpace does not support n_neighbors and conserve=True simultaneously')
+        
+
 
         if self.points is None:
             if isinstance(self.grid_size, int):
@@ -52,6 +54,12 @@ class IDWFunctionSpace(FunctionSpace):
             linspaces = [np.linspace(0, 1, n) for n in self.grid_size]
             self.points = np.array(np.meshgrid(*linspaces)).T.reshape(-1, num_parametric_dimensions)
 
+        if n_neighbors is not None:
+            if n_neighbors > self.points.shape[0]:
+                raise ValueError('n_neighbors cannot be greater than the number of points')
+            if n_neighbors < 1:
+                raise ValueError('n_neighbors must be greater than 0')
+            
         super().__init__(num_parametric_dimensions, (self.points.shape[0],))
         
 
@@ -150,9 +158,13 @@ class IDWFunctionSpace(FunctionSpace):
                     weights = weights.T
             np.nan_to_num(weights, copy=False, nan=1.)
         else:
+            if self.n_neighbors < parametric_coordinates.shape[0]:
+                n_neighbors = parametric_coordinates.shape[0]
+            else:
+                n_neighbors = self.n_neighbors
             # assemble a sparse matrix with the weights of the n_neighbors closest points
             from sklearn.neighbors import NearestNeighbors
-            nbrs = NearestNeighbors(n_neighbors=self.n_neighbors, algorithm='ball_tree').fit(parametric_coordinates)
+            nbrs = NearestNeighbors(n_neighbors=n_neighbors, algorithm='ball_tree').fit(parametric_coordinates)
             distances, indices = nbrs.kneighbors(self.points)
             with np.errstate(divide='ignore', invalid='ignore'):
                 weights = 1.0/distances**self.order
