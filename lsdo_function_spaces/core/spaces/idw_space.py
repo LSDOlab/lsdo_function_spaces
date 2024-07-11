@@ -158,7 +158,7 @@ class IDWFunctionSpace(FunctionSpace):
                     weights = weights.T
             np.nan_to_num(weights, copy=False, nan=1.)
         else:
-            if self.n_neighbors < parametric_coordinates.shape[0]:
+            if self.n_neighbors > parametric_coordinates.shape[0]:
                 n_neighbors = parametric_coordinates.shape[0]
             else:
                 n_neighbors = self.n_neighbors
