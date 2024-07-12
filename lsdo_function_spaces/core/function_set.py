@@ -227,7 +227,7 @@ class FunctionSet:
         u_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(1,0))
         v_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(0,1))
         normals = csdl.cross(u_vectors, v_vectors, axis=1)
-        normals = normals / (csdl.expand(csdl.norm(normals, axes=(1,)), (normals.shape), action='i->ij') + 1e-12)
+        normals = normals / (csdl.expand(csdl.norm(normals + 1e-8, axes=(1,)), (normals.shape), action='i->ij') + 1e-12)
 
         if plot:
             import vedo

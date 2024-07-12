@@ -185,8 +185,8 @@ class Function:
         for i in csdl.frange(grid_n-1):
             for j in csdl.frange(grid_n-1):
                 # Compute the area of the quadrilateral
-                area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]))/2
-                area_2 = csdl.norm(csdl.cross(grid_values[i,j+1]-grid_values[i+1,j+1], grid_values[i+1,j]-grid_values[i+1,j+1]))/2
+                area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]) + 1e-8)/2
+                area_2 = csdl.norm(csdl.cross(grid_values[i,j+1]-grid_values[i+1,j+1], grid_values[i+1,j]-grid_values[i+1,j+1]) + 1e-8)/2
                 area = area_1 + area_2
 
                 values = values.set(csdl.slice[i,j], grid_center_values[i,j]*area)
