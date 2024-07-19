@@ -277,10 +277,10 @@ class FunctionSet:
         coeff_vectors = []
         reorder_indices = []
         for i, function in self.functions.items():
-            indices = [j for j in range(len(function_indices)) if function_indices[j] == i]
+            indices = np.where(np.array(function_indices) == i)[0]
             if len(indices) == 0:
                 continue
-            reorder_indices += indices
+            reorder_indices += indices.astype(int).tolist()
             para_coords = np.array([function_parametric_coordinates[j] for j in indices]).reshape(-1, function.space.num_parametric_dimensions)
             if parametric_derivative_orders is not None:
                 para_derivs = parametric_derivative_orders
@@ -291,6 +291,10 @@ class FunctionSet:
                                                                     non_csdl=non_csdl)
             basis_matrices.append(basis_matrix)
             coeff_vectors.append(coefficients)
+
+        if len(reorder_indices) != len(parametric_coordinates):
+            raise ValueError("Some points were not evaluated.")
+
 
         basis_matrix = sps.block_diag(basis_matrices, format='csr')
         if len(coeff_vectors) == 0:
@@ -330,7 +334,7 @@ class FunctionSet:
 
         return function_values
     
-    def integrate(self, area, grid_n=10, indices=None):
+    def integrate(self, area, grid_n=10, indices=None, quadrature_order=2) -> tuple[csdl.Variable, list[tuple[int, np.ndarray]]]:
         if indices is None:
             indices = list(self.functions)
         parametric_coordinates = []
@@ -338,7 +342,7 @@ class FunctionSet:
         # TODO: frange?
         for i in indices:
             function = self.functions[i]
-            value, coords = function.integrate(area.functions[i], grid_n=grid_n)
+            value, coords = function.integrate(area.functions[i], grid_n=grid_n, quadrature_order=quadrature_order)
             for j in range(len(coords)):
                 parametric_coordinates.append((i,coords[j]))
             if len(value.shape) == 1:

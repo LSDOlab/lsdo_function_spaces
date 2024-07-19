@@ -161,37 +161,96 @@ class Function:
 
         return values
     
-    def integrate(self, area, grid_n=10):
+    # def integrate(self, area, grid_n=10):
+    #     # Generate parametric grid
+    #     # parametric_grid = self.space.generate_parametric_grid(grid_n)
+    #     parametric_grid = np.zeros((grid_n, grid_n, 2))
+    #     for i in range(grid_n):
+    #         for j in range(grid_n):
+    #             parametric_grid[i,j] = np.array([i/(grid_n-1), j/(grid_n-1)])
+
+    #     # print('parametric grid shape', parametric_grid.shape)
+    #     # parametric_grid = parametric_grid.reshape(grid_n, grid_n, -1)        
+
+    #     # Get the parametric coordinates of the grid center points
+    #     grid_centers = np.zeros((grid_n-1, grid_n-1, self.space.num_parametric_dimensions))
+    #     for i in range(grid_n-1):
+    #         for j in range(grid_n-1):
+    #             grid_centers[i,j] = (parametric_grid[i+1, j] + parametric_grid[i, j] + parametric_grid[i, j+1] + parametric_grid[i+1, j+1])/4
+    #     # Evaluate grid of points
+    #     grid_values = area.evaluate(parametric_coordinates=parametric_grid.reshape(-1,2)).reshape((grid_n, grid_n, -1))
+    #     grid_center_values = self.evaluate(parametric_coordinates=grid_centers.reshape(-1,2)).reshape((grid_n-1, grid_n-1, self.num_physical_dimensions))
+
+    #     values = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1)))
+    #     for i in csdl.frange(grid_n-1):
+    #         for j in csdl.frange(grid_n-1):
+    #             # Compute the area of the quadrilateral
+    #             area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]))/2
+    #             area_2 = csdl.norm(csdl.cross(grid_values[i,j+1]-grid_values[i+1,j+1], grid_values[i+1,j]-grid_values[i+1,j+1]))/2
+    #             area = area_1 + area_2
+
+    #             values = values.set(csdl.slice[i,j], grid_center_values[i,j]*area)
+
+    #     return values.reshape((-1, self.num_physical_dimensions)), grid_centers.reshape(-1, self.space.num_parametric_dimensions)
+    
+    def integrate(self, area, grid_n=10, quadrature_order=2):
+        """
+        Integrate the function over the area (2D). Uses gaussian quadrature for the integration.
+        """
+
         # Generate parametric grid
-        # parametric_grid = self.space.generate_parametric_grid(grid_n)
         parametric_grid = np.zeros((grid_n, grid_n, 2))
         for i in range(grid_n):
             for j in range(grid_n):
                 parametric_grid[i,j] = np.array([i/(grid_n-1), j/(grid_n-1)])
 
-        # print('parametric grid shape', parametric_grid.shape)
-        # parametric_grid = parametric_grid.reshape(grid_n, grid_n, -1)        
+        # get quadrature points and weights
+        quadrature_points, quadrature_weights = np.polynomial.legendre.leggauss(quadrature_order)
+        quadrature_points = (quadrature_points + 1)/2
+        quadrature_weights = quadrature_weights/2
+        quadrature_coords = np.zeros((quadrature_order**2, 2))
+        quadrature_coord_weights = np.zeros((quadrature_order**2,))
+        for i in range(quadrature_order):
+            for j in range(quadrature_order):
+                quadrature_coords[i*quadrature_order+j] = np.array([quadrature_points[i], quadrature_points[j]])
+                quadrature_coord_weights[i*quadrature_order+j] = quadrature_weights[i]*quadrature_weights[j]
+        quadrature_coord_weights = csdl.Variable(value=quadrature_coord_weights)
+
+        # get the parametric coordinates of the quadrature points
+        quadrature_parametric_coords = np.zeros((grid_n-1, grid_n-1, quadrature_order**2, 2))
+        for i in range(grid_n-1):
+            for j in range(grid_n-1):
+                for k in range(quadrature_order**2):
+                    quadrature_parametric_coords[i,j,k] = parametric_grid[i,j] + quadrature_coords[k]/(grid_n-1)
+
+        # evaluate the function at the quadrature points
+        quadrature_values = self.evaluate(parametric_coordinates=quadrature_parametric_coords.reshape(-1,2)).reshape((grid_n-1, grid_n-1, quadrature_order**2, self.num_physical_dimensions))
+
+        # compute the integral
+        values = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1, self.num_physical_dimensions)))
+        for i in csdl.frange(grid_n-1):
+            for j in csdl.frange(grid_n-1):
+                for k in csdl.frange(quadrature_order**2):
+                    values = values.set(csdl.slice[i,j], values[i,j] + quadrature_values[i,j,k]*quadrature_coord_weights[k])
+
+        # compute areas of the quadrilaterals
+        grid_values = area.evaluate(parametric_coordinates=parametric_grid.reshape(-1,2)).reshape((grid_n, grid_n, -1))
+        output = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1)))
+        for i in csdl.frange(grid_n-1):
+            for j in csdl.frange(grid_n-1):
+                area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]) + 1e-8)/2
+                area_2 = csdl.norm(csdl.cross(grid_values[i,j+1]-grid_values[i+1,j+1], grid_values[i+1,j]-grid_values[i+1,j+1]) + 1e-8)/2
+                output = output.set(csdl.slice[i,j], (area_1+area_2)*values[i,j])
 
         # Get the parametric coordinates of the grid center points
         grid_centers = np.zeros((grid_n-1, grid_n-1, self.space.num_parametric_dimensions))
         for i in range(grid_n-1):
             for j in range(grid_n-1):
                 grid_centers[i,j] = (parametric_grid[i+1, j] + parametric_grid[i, j] + parametric_grid[i, j+1] + parametric_grid[i+1, j+1])/4
-        # Evaluate grid of points
-        grid_values = area.evaluate(parametric_coordinates=parametric_grid.reshape(-1,2)).reshape((grid_n, grid_n, -1))
-        grid_center_values = self.evaluate(parametric_coordinates=grid_centers.reshape(-1,2)).reshape((grid_n-1, grid_n-1, self.num_physical_dimensions))
 
-        values = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1)))
-        for i in csdl.frange(grid_n-1):
-            for j in csdl.frange(grid_n-1):
-                # Compute the area of the quadrilateral
-                area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]) + 1e-8)/2
-                area_2 = csdl.norm(csdl.cross(grid_values[i,j+1]-grid_values[i+1,j+1], grid_values[i+1,j]-grid_values[i+1,j+1]) + 1e-8)/2
-                area = area_1 + area_2
+        return output.reshape((-1, self.num_physical_dimensions)), grid_centers.reshape(-1, self.space.num_parametric_dimensions) 
 
-                values = values.set(csdl.slice[i,j], grid_center_values[i,j]*area)
 
-        return values.reshape((-1, self.num_physical_dimensions)), grid_centers.reshape(-1, self.space.num_parametric_dimensions)
 
     def refit(self, new_function_space:lfs.FunctionSpace, grid_resolution:tuple=None, 
               parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
@@ -844,7 +903,7 @@ class Function:
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 100
+            num_points = 500
 
             # Generate meshgrid of parametric coordinates
             mesh_grid_input = []
