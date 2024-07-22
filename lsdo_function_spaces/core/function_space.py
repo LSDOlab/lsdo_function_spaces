@@ -250,8 +250,14 @@ class FunctionSpace:
                 coefficients = csdl.solve_linear(fitting_matrix.toarray(), fitting_rhs)
         else:
             if isinstance(values, csdl.Variable):
-                fitting_rhs = basis_matrix.T @ values
-                coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
+                if len(values.shape) > 1:
+                    coefficients = csdl.Variable(value=np.zeros((fitting_matrix.shape[0], values.shape[1])))
+                    for i in csdl.frange(values.shape[1]):
+                        fitting_rhs = basis_matrix.T @ values[:,i]
+                        coefficients = coefficients.set(csdl.slice[:,i], csdl.solve_linear(fitting_matrix, fitting_rhs).flatten())
+                else:
+                    fitting_rhs = basis_matrix.T @ values
+                    coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
             else:
                 fitting_rhs = basis_matrix.T.dot(values)
                 if sps.issparse(fitting_matrix):
