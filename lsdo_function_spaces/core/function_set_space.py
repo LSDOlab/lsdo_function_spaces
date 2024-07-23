@@ -26,7 +26,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
     '''
     num_parametric_dimensions : dict[int]
     spaces : dict[lfs.FunctionSpace]
-    connections : dict[dict[int]] = None
+    connections : dict[list[int]] = None
 
     # @property
     # def index_to_coefficient_indices(self) -> dict[int, list[int]]:
@@ -228,6 +228,77 @@ class FunctionSetSpace(lfs.FunctionSpace):
 
         return coefficients
     
+    def fit_monolithic(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:list[tuple[int,np.ndarray]]=None,
+        parametric_derivative_orders:list[tuple]=None, basis_matrix:Union[sps.csc_matrix, np.ndarray]=None,
+        regularization_parameter:float=None) -> list[csdl.Variable]:
+        '''
+        Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
+        parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
+        will be used.
+
+        Parameters
+        ----------
+        values : csdl.Variable|np.ndarray -- shape=(num_points,num_physical_dimensions)
+            The values of the data.
+        parametric_coordinates : list[tuple[int,np.ndarray]] -- list of tuples of the form (index, parametric_coordinates) for each value
+            The parametric coordinates of the data.
+        parametric_derivative_orders : np.ndarray = None -- list of tuples of shape=(num_parametric_dimensions,) for each value
+            The derivative orders to fit.
+        basis_matrix : sps.csc_matrix|np.ndarray = None -- shape=(num_points, num_coefficients)
+            The basis matrix to use for fitting.
+        regularization_parameter : float = None
+            The regularization parameter to use for fitting. If None, no regularization is used.
+
+        Returns
+        -------
+        coefficients : list[csdl.Variable]
+            The fitted coefficients for each function in the set.
+        '''
+        # Current implementation: Perform fitting on each individual function in the set
+        num_physical_dimensions = values.shape[-1]
+
+        # Organize values into a list of values for each function in the set
+        values_per_function = {}
+        parametric_coordinates_per_function = {}
+        parametric_derivative_orders_per_function = {}
+        for i, space in self.spaces.items():
+            values_per_function[i] = []
+            parametric_coordinates_per_function[i] = []
+            parametric_derivative_orders_per_function[i] = None
+
+
+        for i, parametric_coordinate in enumerate(parametric_coordinates):
+            index, parametric_coordinate = parametric_coordinate
+            # values_per_function[index].append(values[i,:])
+            values_per_function[index].append(i)
+            parametric_coordinates_per_function[index].append(parametric_coordinate)
+            if parametric_derivative_orders is not None:
+                parametric_derivative_orders_per_function[index].append(parametric_derivative_orders[i])
+
+        for i, space in self.spaces.items():
+            if len(values_per_function[i]) > 0:
+                parametric_coordinates_per_function[i] = np.vstack(parametric_coordinates_per_function[i])
+
+        # Fit each function in the set
+        coefficients = {}
+        for i, space in self.spaces.items():
+            if len(values_per_function[i]) > 0:
+                # if isinstance(values, csdl.Variable):
+                #     function_values = csdl.blockmat([[value.reshape((1, value.shape[0]))] for value in values_per_function[i]])
+                function_values = values[values_per_function[i]]
+                coefficients[i] = space.fit(values=function_values, parametric_coordinates=parametric_coordinates_per_function[i],
+                                            parametric_derivative_orders=None, regularization_parameter=regularization_parameter)
+            else:
+                # print(f"No data was provided for function {i}.")
+                # Kind of hacky way to get size of coefficients
+                parametric_coordinate = space.generate_parametric_grid(grid_resolution=(1,1))[0]
+                basis_vector = space.compute_basis_matrix(parametric_coordinates=parametric_coordinate)
+                num_coefficients = basis_vector.shape[1]
+                function_coefficients = csdl.Variable(value=np.zeros((num_coefficients,num_physical_dimensions)))
+                coefficients[i] = function_coefficients
+
+        return coefficients
+
 
     def fit_function_set(self, values:Union[csdl.Variable,np.ndarray], parametric_coordinates:list[tuple[int,np.ndarray]]=None,
             parametric_derivative_orders:list[tuple]=None, basis_matrix:Union[sps.csc_matrix, np.ndarray]=None,
@@ -264,7 +335,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
         for i, function_coefficients in coefficients.items():
             functions[i] = lfs.Function(space=self.spaces[i], coefficients=function_coefficients)
 
-        function_set = lfs.FunctionSet(functions=functions)
+        function_set = lfs.FunctionSet(functions=functions, space=self)
 
         return function_set
 

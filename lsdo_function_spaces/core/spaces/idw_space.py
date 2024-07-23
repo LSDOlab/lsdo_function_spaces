@@ -4,6 +4,7 @@ from lsdo_function_spaces import FunctionSpace, Function
 from scipy.spatial.distance import cdist
 from dataclasses import dataclass
 from typing import Union
+import csdl_alpha as csdl
 
 class IDWFunctionSpace(FunctionSpace):
     """
@@ -47,7 +48,6 @@ class IDWFunctionSpace(FunctionSpace):
             raise ValueError('IDWFunctionSpace does not support n_neighbors and conserve=True simultaneously')
         
 
-
         if self.points is None:
             if isinstance(self.grid_size, int):
                 self.grid_size = (self.grid_size,)*num_parametric_dimensions
@@ -62,6 +62,71 @@ class IDWFunctionSpace(FunctionSpace):
             
         super().__init__(num_parametric_dimensions, (self.points.shape[0],))
         
+    def stitch(self, self_face, self_coeffs, other, other_face, other_coeffs):
+        """
+        Stitch two IDW function spaces together.
+
+        Parameters
+        ----------
+        self_face : int
+            The face of the current function space.
+        other : IDWFunctionSpace
+            The other function space to stitch.
+        other_face : int
+            The face of the other function space.
+
+        Returns
+        -------
+        IDWFunctionSpace
+            The stitched function space.
+
+        """
+        if self_face == 1:
+            self_inds = np.where(self.points[:, 1] == 0)
+            self_free_index = 0
+        elif self_face == 2:
+            self_inds = np.where(self.points[:, 0] == 1)
+            self_free_index = 1
+        elif self_face == 3:
+            self_inds = np.where(self.points[:, 1] == 1)
+            self_free_index = 0
+        elif self_face == 4:
+            self_inds = np.where(self.points[:, 0] == 0)
+            self_free_index = 1
+        self_inds = [int(ind) for ind in self_inds[0]]
+
+        if other_face == 1:
+            other_inds = np.where(other.points[:, 1] == 0)
+            other_free_index = 0
+        elif other_face == 2:
+            other_inds = np.where(other.points[:, 0] == 1)
+            other_free_index = 1
+        elif other_face == 3:
+            other_inds = np.where(other.points[:, 1] == 1)
+            other_free_index = 0
+        elif other_face == 4:
+            other_inds = np.where(other.points[:, 0] == 0)
+            other_free_index = 1
+        other_inds = [int(ind) for ind in other_inds[0]]
+
+        other_inds_sorted = []
+        for i, point in enumerate(self.points[self_inds]):
+            for j, other_point in enumerate(other.points[other_inds]):
+                if np.allclose(point[self_free_index], other_point[other_free_index]):
+                    other_inds_sorted.append(other_inds[j])
+                    break
+
+        if len(other_inds_sorted) != len(self_inds):
+            raise ValueError('Could not find all corresponding points between the two faces')
+        
+        for i, j in csdl.frange(vals=(self_inds, other_inds_sorted)):
+            self_face_coeffs = self_coeffs[i]
+            other_face_coeffs = other_coeffs[j]
+            average_coeffs = (self_face_coeffs + other_face_coeffs)/2
+            self_coeffs = self_coeffs.set(csdl.slice[i], average_coeffs)
+            other_coeffs = other_coeffs.set(csdl.slice[j], average_coeffs)
+        
+        return self_coeffs, other_coeffs
 
     def compute_basis_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders: np.ndarray=None, expansion_factor:int=None) -> np.ndarray:
         """

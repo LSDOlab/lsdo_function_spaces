@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.sparse as sps
 from lsdo_function_spaces import FunctionSpace, Function
+import csdl_alpha as csdl
 
 from dataclasses import dataclass
 
@@ -65,6 +66,66 @@ class BSplineSpace(FunctionSpace):
                 num_knots_i = self.coefficients_shape[i] + self.degree[i] + 1
                 self.knot_indices.append(np.arange(knot_index, knot_index + num_knots_i))
                 knot_index += num_knots_i
+
+    def stitch(self, self_face, self_coeffs, other, other_face, other_coeffs):
+        """
+        Stitch two IDW function spaces together.
+
+        Parameters
+        ----------
+        self_face : int
+            The face of the current function space.
+        other : IDWFunctionSpace
+            The other function space to stitch.
+        other_face : int
+            The face of the other function space.
+
+        Returns
+        -------
+        IDWFunctionSpace
+            The stitched function space.
+
+        """
+        # TODO: triple/quad intersections don't work with this - eg, corners
+
+        ind_array = np.arange(np.prod(self.coefficients_shape)).reshape(self.coefficients_shape)
+
+        if len(self_coeffs.shape) > 2:
+            self_coeffs = self_coeffs.reshape((-1, self.num_physical_dimensions))
+        if len(other_coeffs.shape) > 2:
+            other_coeffs = other_coeffs.reshape((-1, other.num_physical_dimensions))
+
+        if self_face == 1:
+            self_inds = ind_array[:,0]
+        elif self_face == 2:
+            self_inds = ind_array[-1,:]
+        elif self_face == 3:
+            self_inds = ind_array[:,-1]
+        elif self_face == 4:
+            self_inds = ind_array[0,:]
+        self_inds = [int(ind) for ind in self_inds]
+
+        if other_face == 1:
+            other_inds = ind_array[:,0]
+        elif other_face == 2:
+            other_inds = ind_array[-1,:]
+        elif other_face == 3:
+            other_inds = ind_array[:,-1]
+        elif other_face == 4:
+            other_inds = ind_array[0,:]
+        other_inds = [int(ind) for ind in other_inds]
+
+        
+        for i, j in csdl.frange(vals=(self_inds, other_inds)):
+            self_face_coeffs = self_coeffs[i]
+            other_face_coeffs = other_coeffs[j]
+            average_coeffs = (self_face_coeffs + other_face_coeffs)/2
+            self_coeffs = self_coeffs.set(csdl.slice[i], average_coeffs)
+            other_coeffs = other_coeffs.set(csdl.slice[j], average_coeffs)
+        
+        return self_coeffs, other_coeffs
+
+
 
     def compute_basis_matrix(self, parametric_coordinates: np.ndarray, parametric_derivative_orders: np.ndarray = None,
                                    expansion_factor:int=None) -> sps.csc_matrix:

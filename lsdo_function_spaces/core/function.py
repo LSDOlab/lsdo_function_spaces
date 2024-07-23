@@ -157,7 +157,11 @@ class Function:
             # Plot the function
             plotting_elements = self.plot(opacity=0.8, show=False)
             # Plot the evaluated points
-            lfs.plot_points(values.value, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
+            if non_csdl:
+                vals = values
+            else:
+                vals = values.value
+            lfs.plot_points(vals, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
 
         return values
     
@@ -903,7 +907,7 @@ class Function:
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 500
+            num_points = 50
 
             # Generate meshgrid of parametric coordinates
             mesh_grid_input = []

@@ -175,6 +175,61 @@ class FunctionSet:
                 num_parametric_dimensions={i:function.space.num_parametric_dimensions for i, function in self.functions.items()},
                 spaces={i:function.space for i, function in self.functions.items()})
             
+    def find_surface_connections(self):
+        perfect_connections = {}
+        dependent_connections = {}
+        search_n = 5
+        ones = np.ones((search_n)).reshape((-1,1))
+        zeros = np.zeros((search_n)).reshape((-1,1))
+        lin = np.linspace(0, 1, search_n).reshape((-1,1))
+        # find perfect connections
+        function_evals = {}
+        for i, function in self.functions.items():
+            eval1 = function.evaluate(np.hstack((lin, zeros)), non_csdl=True)
+            eval2 = function.evaluate(np.hstack((ones, lin)), non_csdl=True)
+            eval3 = function.evaluate(np.hstack((lin, ones)), non_csdl=True)
+            eval4 = function.evaluate(np.hstack((zeros, lin)), non_csdl=True)
+            function_evals[i] = [eval1, eval2, eval3, eval4]
+        
+        connected_functions = set()
+        for i in self.functions:
+            evals = function_evals[i]
+            for j in self.functions:
+                if i == j:
+                    continue
+                if frozenset([i,j]) in connected_functions:
+                    continue
+                evals2 = function_evals[j]
+                for k, eval1 in enumerate(evals):
+                    for l, eval2 in enumerate(evals2):
+                        if np.linalg.norm(eval1 - eval2) < 1e-6:
+                            # points1 = [(i, eval1_i) for eval1_i in eval1]
+                            # points2 = [(j, eval2_i) for eval2_i in eval2]
+                            # points = np.vstack((eval1, eval2))
+                            # self.project(points, plot=True)
+                            perfect_connections[(i,k+1)] = (j,l+1)
+                            # perfect_connections[(j,l+1)] = (i,k+1)
+                            connected_functions.add(frozenset([i,j]))
+                            break
+                        if np.linalg.norm(eval1 - eval2[::-1]) < 1e-6:
+                            perfect_connections[(i,k+1)] = (j,-l-1)
+                            # perfect_connections[(j,l+1)] = (i,-k-1)
+                            connected_functions.add(frozenset([i,j]))
+                            break
+        return perfect_connections
+
+    def apply_surface_connections(self, geometry=None):
+        connections = self.space.connections
+        for face1, face2 in connections.items():
+            function1 = self.functions[face1[0]]
+            function2 = self.functions[face2[0]]
+            coeffs1, coeffs2 = function1.space.stitch(face1[1], function1.coefficients, 
+                                     function2.space, face2[1], function2.coefficients)
+            function1.coefficients = coeffs1
+            function2.coefficients = coeffs2
+
+
+
 
     def stack_coefficients(self) -> csdl.Variable:
         '''
