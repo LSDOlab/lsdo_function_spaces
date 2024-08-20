@@ -213,7 +213,7 @@ class FunctionSet:
             The coordinates at which to evaluate the function. The list elements correspond to the coordinate of each point.
             The tuple elements correspond to the index of the function and the parametric coordinates for that point.
             The parametric coordinates should be a numpy array of shape (num_parametric_dimensions,).
-        parametric_derivative_orders : tuple = None -- shape=(num_points,num_parametric_dimensions)
+        parametric_derivative_orders : list[tuple] = None -- shape=(num_points,num_parametric_dimensions)
             The order of the parametric derivatives to evaluate. If None, the function itself is evaluated.
         plot : bool = False
             Whether or not to plot the function with the points from the result of the evaluation.
@@ -224,6 +224,10 @@ class FunctionSet:
         function_values : csdl.Variable
             The function evaluated at the given coordinates.
         '''
+        if isinstance(parametric_coordinates, tuple):
+            parametric_coordinates = [parametric_coordinates]
+        if isinstance(parametric_derivative_orders, tuple):
+            parametric_derivative_orders = [parametric_derivative_orders]
 
         # Process parametric coordinates to group them by which function they belong to
         function_indices = []
@@ -241,6 +245,9 @@ class FunctionSet:
             para_coords = np.array([function_parametric_coordinates[j] for j in indices]).reshape(-1, function.space.num_parametric_dimensions)
             if parametric_derivative_orders is not None:
                 para_derivs = [parametric_derivative_orders[j] for j in indices]
+                
+                if len(para_derivs) >= 1:
+                    para_derivs = para_derivs[0] # TODO: Add support for a separate derivative order for each point!
             else:
                 para_derivs = None
             if len(indices) > 0:

@@ -262,6 +262,8 @@ class FunctionSpace:
                 else:
                     coefficients = np.linalg.solve(fitting_matrix, fitting_rhs)
 
+        coefficients = coefficients.reshape(self.coefficients_shape + (values.shape[-1],))
+
         return coefficients
         # raise NotImplementedError(f"Fit method must be implemented in {type(self)} class.")
 
