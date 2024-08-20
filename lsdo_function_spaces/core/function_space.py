@@ -122,8 +122,8 @@ class FunctionSpace:
         raise NotImplementedError(f"Compute evaluation matrix method must be implemented in {type(self)} class.")
     
 
-    def compute_fitting_matrix(self):
-        pass
+    def compute_fitting_map(self, parametric_coordinates):
+        raise NotImplementedError(f"Compute fitting map method must be implemented in {type(self)} class.")
     
 
     # def refit(self, coefficients:csdl.Variable, grid_resolution:tuple=None, parametric_coordinates:np.ndarray=None, 
@@ -221,12 +221,14 @@ class FunctionSpace:
 
         if len(values.shape) > 2:
             values = values.reshape((-1, values.shape[-1]))
+        elif len(values.shape) == 1:
+            values = values.reshape((1, -1))
 
         if parametric_coordinates is not None:
-            if hasattr(self, 'compute_fitting_map'):
+            try:
                 fitting_map = self.compute_fitting_map(parametric_coordinates)
                 return fitting_map @ values
-            else:
+            except NotImplementedError:
                 basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
                 fitting_matrix = basis_matrix.T.dot(basis_matrix)
                 
@@ -245,11 +247,17 @@ class FunctionSpace:
                     # NOTE:  # CASTING FITTING MATRIX TO DENSE BECAUSE CSDL DOESN'T HAVE SPARSE SOLVE YET
             else:
                 fitting_rhs = csdl.sparse.matvec(basis_matrix.T, values)
-                coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
+                coefficients = csdl.solve_linear(fitting_matrix.toarray(), fitting_rhs)
         else:
             if isinstance(values, csdl.Variable):
-                fitting_rhs = basis_matrix.T @ values
-                coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
+                if len(values.shape) > 1:
+                    coefficients = csdl.Variable(value=np.zeros((fitting_matrix.shape[0], values.shape[1])))
+                    for i in csdl.frange(values.shape[1]):
+                        fitting_rhs = basis_matrix.T @ values[:,i]
+                        coefficients = coefficients.set(csdl.slice[:,i], csdl.solve_linear(fitting_matrix, fitting_rhs).flatten())
+                else:
+                    fitting_rhs = basis_matrix.T @ values
+                    coefficients = csdl.solve_linear(fitting_matrix, fitting_rhs)
             else:
                 fitting_rhs = basis_matrix.T.dot(values)
                 if sps.issparse(fitting_matrix):

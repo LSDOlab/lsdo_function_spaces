@@ -26,10 +26,6 @@ class PolynomialSpace(FunctionSpace):
     """
 
     def __init__(self, num_parametric_dimensions:int, order:Union[int, tuple[int]]):
-        self.order = order
-
-
-    # def __post_init__(self):
         """
         Initialize an IDW function space.
 
@@ -41,8 +37,9 @@ class PolynomialSpace(FunctionSpace):
             If True, the weights will be normalized to conserve the sum of the values. Default is True.
 
         """
+        self.order = order
         if isinstance(self.order, int):
-            self.order = (self.order,)*self.num_parametric_dimensions
+            self.order = (self.order,)*num_parametric_dimensions
 
         self.size = np.prod([order + 1 for order in self.order])
         super().__init__(num_parametric_dimensions, (self.size,))

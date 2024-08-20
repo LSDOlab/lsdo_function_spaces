@@ -53,9 +53,45 @@ class Function:
         '''
         return lfs.Function(space=self.space, coefficients=self.coefficients, name=self.name)
 
+    def get_matrix_vector(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
+                 non_csdl:bool=False):
+        '''
+        Gets the basis matrix and coefficients whose product is the function evaluated at the given coordinates.
+
+        Parameters
+        ----------
+        parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
+            The coordinates at which to evaluate the function.
+        parametric_derivative_order : tuple = None -- shape=(num_points,num_parametric_dimensions)
+            The order of the parametric derivatives to evaluate.
+        coefficients : csdl.Variable = None -- shape=coefficients_shape
+            The coefficients of the function.
+        plot : bool = False
+            Whether or not to plot the function with the points from the result of the evaluation.
+        non_csdl : bool = False
+            If true, will run numpy computations instead of csdl computations, and return a numpy array.
+
+        Returns
+        -------
+        basis_matrix : np.ndarray | sps.csr_matrix
+            The basis matrix evaluated at the given coordinates.
+        coefficients : csdl.Variable
+            The coefficients of the function.
+        '''
+        if coefficients is None:
+            coefficients = self.coefficients
+
+        if non_csdl and isinstance(coefficients, csdl.Variable):
+            coefficients = coefficients.value
+
+        basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
+        if coefficients.shape != (basis_matrix.shape[1], self.num_physical_dimensions):
+            coefficients = coefficients.reshape((basis_matrix.shape[1], self.num_physical_dimensions))
+
+        return basis_matrix, coefficients
 
     def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
-                 plot:bool=False) -> csdl.Variable:
+                 plot:bool=False, non_csdl:bool=False) -> csdl.Variable:
         '''
         Evaluates the function.
 
@@ -69,7 +105,8 @@ class Function:
             The coefficients of the function.
         plot : bool = False
             Whether or not to plot the function with the points from the result of the evaluation.
-        
+        non_csdl : bool = False
+            If true, will run numpy computations instead of csdl computations, and return a numpy array.
 
         Returns
         -------
@@ -79,15 +116,18 @@ class Function:
         if coefficients is None:
             coefficients = self.coefficients
 
+        if non_csdl and isinstance(coefficients, csdl.Variable):
+            coefficients = coefficients.value
 
         basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
         # # values = basis_matrix @ coefficients
         if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
-            coefficients_reshaped = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
+            if coefficients.shape != (basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]):
+                coefficients = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
             # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
-            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients_reshaped.shape[1])))
-            for i in range(coefficients_reshaped.shape[1]):
-                coefficients_column = coefficients_reshaped[:,i].reshape((coefficients_reshaped.shape[0],1))
+            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients.shape[1])))
+            for i in csdl.frange(coefficients.shape[1]):
+                coefficients_column = coefficients[:,i].reshape((coefficients.shape[0],1))
                 values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
         else:
             values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], self.num_physical_dimensions))
@@ -95,7 +135,8 @@ class Function:
         if len(parametric_coordinates.shape) == 1:
             pass    # Come back to this case
 
-        values = values.reshape(parametric_coordinates.shape[:-1] + (self.num_physical_dimensions,))
+        if values.shape != parametric_coordinates.shape[:-1] + (self.num_physical_dimensions,):
+            values = values.reshape(parametric_coordinates.shape[:-1] + (self.num_physical_dimensions,))
 
         if values.shape[0] == 1:
             values = values[0]  # Get rid of the extra dimension if only one point is evaluated
@@ -116,10 +157,104 @@ class Function:
             # Plot the function
             plotting_elements = self.plot(opacity=0.8, show=False)
             # Plot the evaluated points
-            lfs.plot_points(values.value, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
+            if non_csdl:
+                vals = values
+            else:
+                vals = values.value
+            lfs.plot_points(vals, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
 
         return values
     
+    # def integrate(self, area, grid_n=10):
+    #     # Generate parametric grid
+    #     # parametric_grid = self.space.generate_parametric_grid(grid_n)
+    #     parametric_grid = np.zeros((grid_n, grid_n, 2))
+    #     for i in range(grid_n):
+    #         for j in range(grid_n):
+    #             parametric_grid[i,j] = np.array([i/(grid_n-1), j/(grid_n-1)])
+
+    #     # print('parametric grid shape', parametric_grid.shape)
+    #     # parametric_grid = parametric_grid.reshape(grid_n, grid_n, -1)        
+
+    #     # Get the parametric coordinates of the grid center points
+    #     grid_centers = np.zeros((grid_n-1, grid_n-1, self.space.num_parametric_dimensions))
+    #     for i in range(grid_n-1):
+    #         for j in range(grid_n-1):
+    #             grid_centers[i,j] = (parametric_grid[i+1, j] + parametric_grid[i, j] + parametric_grid[i, j+1] + parametric_grid[i+1, j+1])/4
+    #     # Evaluate grid of points
+    #     grid_values = area.evaluate(parametric_coordinates=parametric_grid.reshape(-1,2)).reshape((grid_n, grid_n, -1))
+    #     grid_center_values = self.evaluate(parametric_coordinates=grid_centers.reshape(-1,2)).reshape((grid_n-1, grid_n-1, self.num_physical_dimensions))
+
+    #     values = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1)))
+    #     for i in csdl.frange(grid_n-1):
+    #         for j in csdl.frange(grid_n-1):
+    #             # Compute the area of the quadrilateral
+    #             area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]))/2
+    #             area_2 = csdl.norm(csdl.cross(grid_values[i,j+1]-grid_values[i+1,j+1], grid_values[i+1,j]-grid_values[i+1,j+1]))/2
+    #             area = area_1 + area_2
+
+    #             values = values.set(csdl.slice[i,j], grid_center_values[i,j]*area)
+
+    #     return values.reshape((-1, self.num_physical_dimensions)), grid_centers.reshape(-1, self.space.num_parametric_dimensions)
+    
+    def integrate(self, area, grid_n=10, quadrature_order=2):
+        """
+        Integrate the function over the area (2D). Uses gaussian quadrature for the integration.
+        """
+
+        # Generate parametric grid
+        parametric_grid = np.zeros((grid_n, grid_n, 2))
+        for i in range(grid_n):
+            for j in range(grid_n):
+                parametric_grid[i,j] = np.array([i/(grid_n-1), j/(grid_n-1)])
+
+        # get quadrature points and weights
+        quadrature_points, quadrature_weights = np.polynomial.legendre.leggauss(quadrature_order)
+        quadrature_points = (quadrature_points + 1)/2
+        quadrature_weights = quadrature_weights/2
+        quadrature_coords = np.zeros((quadrature_order**2, 2))
+        quadrature_coord_weights = np.zeros((quadrature_order**2,))
+        for i in range(quadrature_order):
+            for j in range(quadrature_order):
+                quadrature_coords[i*quadrature_order+j] = np.array([quadrature_points[i], quadrature_points[j]])
+                quadrature_coord_weights[i*quadrature_order+j] = quadrature_weights[i]*quadrature_weights[j]
+        quadrature_coord_weights = csdl.Variable(value=quadrature_coord_weights)
+
+        # get the parametric coordinates of the quadrature points
+        quadrature_parametric_coords = np.zeros((grid_n-1, grid_n-1, quadrature_order**2, 2))
+        for i in range(grid_n-1):
+            for j in range(grid_n-1):
+                for k in range(quadrature_order**2):
+                    quadrature_parametric_coords[i,j,k] = parametric_grid[i,j] + quadrature_coords[k]/(grid_n-1)
+
+        # evaluate the function at the quadrature points
+        quadrature_values = self.evaluate(parametric_coordinates=quadrature_parametric_coords.reshape(-1,2)).reshape((grid_n-1, grid_n-1, quadrature_order**2, self.num_physical_dimensions))
+
+        # compute the integral
+        values = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1, self.num_physical_dimensions)))
+        for i in csdl.frange(grid_n-1):
+            for j in csdl.frange(grid_n-1):
+                for k in csdl.frange(quadrature_order**2):
+                    values = values.set(csdl.slice[i,j], values[i,j] + quadrature_values[i,j,k]*quadrature_coord_weights[k])
+
+        # compute areas of the quadrilaterals
+        grid_values = area.evaluate(parametric_coordinates=parametric_grid.reshape(-1,2)).reshape((grid_n, grid_n, -1))
+        output = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1)))
+        for i in csdl.frange(grid_n-1):
+            for j in csdl.frange(grid_n-1):
+                area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]) + 1e-8)/2
+                area_2 = csdl.norm(csdl.cross(grid_values[i,j+1]-grid_values[i+1,j+1], grid_values[i+1,j]-grid_values[i+1,j+1]) + 1e-8)/2
+                output = output.set(csdl.slice[i,j], (area_1+area_2)*values[i,j])
+
+        # Get the parametric coordinates of the grid center points
+        grid_centers = np.zeros((grid_n-1, grid_n-1, self.space.num_parametric_dimensions))
+        for i in range(grid_n-1):
+            for j in range(grid_n-1):
+                grid_centers[i,j] = (parametric_grid[i+1, j] + parametric_grid[i, j] + parametric_grid[i, j+1] + parametric_grid[i+1, j+1])/4
+
+        return output.reshape((-1, self.num_physical_dimensions)), grid_centers.reshape(-1, self.space.num_parametric_dimensions) 
+
+
 
     def refit(self, new_function_space:lfs.FunctionSpace, grid_resolution:tuple=None, 
               parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
@@ -239,16 +374,22 @@ class Function:
         points = points.reshape((-1, num_physical_dimensions))
 
         # grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
-        grid_search_resolution = self.space._generate_projection_grid_search_resolution(grid_search_density_parameter)
-        if grid_search_resolution is None:
-            grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
-        # grid_search_resolution = 100
+        if not hasattr(self, '_grid_searches'):
+            self._grid_searches = {}
+        if grid_search_density_parameter not in self._grid_searches:
+            grid_search_resolution = self.space._generate_projection_grid_search_resolution(grid_search_density_parameter)
+            if grid_search_resolution is None:
+                grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
+            # grid_search_resolution = 100
 
-        # Generate parametric grid
-        parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
-        # Evaluate grid of points
-        grid_search_values = self.evaluate(parametric_coordinates=parametric_grid_search, coefficients=self.coefficients.value)
-        expanded_points_size = points.shape[0]*grid_search_values.shape[0]
+            # Generate parametric grid
+            parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
+            # Evaluate grid of points
+            grid_search_values = self.evaluate(parametric_coordinates=parametric_grid_search, coefficients=self.coefficients.value)
+            expanded_points_size = points.shape[0]*grid_search_values.shape[0]
+            self._grid_searches[grid_search_density_parameter] = (parametric_grid_search, grid_search_values, expanded_points_size)
+        else:
+            parametric_grid_search, grid_search_values, expanded_points_size = self._grid_searches[grid_search_density_parameter]
         cutoff_size = 1.5e8
         if expanded_points_size > cutoff_size:
             # grid search sections of points at a time
@@ -583,9 +724,15 @@ class Function:
                                        line_width=line_width, additional_plotting_elements=plotting_elements, show=show)
             
             elif self.space.num_parametric_dimensions == 2:
-                plotting_elements = self.plot_surface(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
+                out = self.plot_surface(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
                                         surface_texture=surface_texture, line_width=line_width,
                                         additional_plotting_elements=plotting_elements, show=show)
+                if isinstance(out, tuple):
+                    plotting_elements = out[0]
+                    cmin = out[1]
+                    cmax = out[2]
+                else:
+                    plotting_elements = out
             elif self.space.num_parametric_dimensions == 3:
                 plotting_elements = self.plot_volume(point_type=point_type, plot_types=plot_types, opacity=opacity, color=color, color_map=color_map,
                                         surface_texture=surface_texture, line_width=line_width,
@@ -604,7 +751,8 @@ class Function:
             #     if show:
             #         lfs.show_plot(plotting_elements=plotting_elements, title='B-Spline Set Plot')
             #     return plotting_elements
-
+        if isinstance(color, Function):
+            return plotting_elements, cmin, cmax
         return plotting_elements
 
 
@@ -755,10 +903,11 @@ class Function:
             raise ValueError("This function is not a surface and cannot be plotted as one.")
 
         plotting_elements = additional_plotting_elements.copy()
+        color_is_function = False
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 25
+            num_points = 50
 
             # Generate meshgrid of parametric coordinates
             mesh_grid_input = []
@@ -773,9 +922,12 @@ class Function:
             points = function_values
 
             if isinstance(color, Function):
+                color_is_function = True
                 if color.space.num_parametric_dimensions != 2:
                     raise ValueError("The color function must be 2D to plot as a surface.")
                 color = color.evaluate(parametric_coordinates).value
+                color_max = np.max(color)
+                color_min = np.min(color)
                 if len(color.shape) > 1:
                     if color.shape[1] > 1:
                         color = np.linalg.norm(color, axis=1)
@@ -818,7 +970,8 @@ class Function:
                 pf.show_plot(plotting_elements, title=self.name, axes=1, interactive=True)
             else:
                 pf.show_plot(plotting_elements, title="Surface", axes=1, interactive=True)
-
+        if color_is_function:
+            return plotting_elements, color_min, color_max
         return plotting_elements
     
 

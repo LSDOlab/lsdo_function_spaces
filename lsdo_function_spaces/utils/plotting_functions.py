@@ -1,6 +1,6 @@
 
 
-import vedo
+
 import numpy as np
 from typing import Union
 
@@ -21,6 +21,7 @@ def show_plot(plotting_elements:list, title:str, axes:bool=True, view_up:str="z"
     interactive : bool = True
         A boolean on whether the plot is interactive or not.
     '''
+    import vedo
     plotter = vedo.Plotter()
     plotter.show(plotting_elements, title, axes=axes, viewup=view_up, interactive=interactive)
 
@@ -47,6 +48,7 @@ def plot_points(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray
     show : bool = True
         A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is still returned.
     '''
+    import vedo
 
     plotting_elements = additional_plotting_elements.copy()
 
@@ -95,6 +97,7 @@ def plot_curve(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray]
     show : bool
         A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
     '''
+    import vedo
     # NOTE: The function object performs the evaluation(s) to get the points (and colors if applicable) and then these functions do the vedo.
     
     plotting_elements = additional_plotting_elements.copy()
@@ -156,7 +159,7 @@ def plot_surface(points:np.ndarray, plot_types:list=['function'], opacity:float=
     show : bool
         A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
     '''
-    
+    import vedo
     plotting_elements = additional_plotting_elements.copy()
 
     num_plot_u = points.shape[0]
@@ -201,6 +204,42 @@ def plot_surface(points:np.ndarray, plot_types:list=['function'], opacity:float=
 
     return plotting_elements
 
+def get_surface_mesh(surface, color=None, grid_n=25, offset=0):
+    import lsdo_function_spaces as fs
+    surface:fs.Function = surface
+
+    # Generate meshgrid of parametric coordinates
+    mesh_grid_input = []
+    for dimension_index in range(2):
+        mesh_grid_input.append(np.linspace(0., 1., grid_n))
+    parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
+    for dimensions_index in range(2):
+        parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
+    grid = np.hstack(parametric_coordinates_tuple)
+
+    # grid = surface.space.generate_parametric_grid(grid_n)
+    points = surface.evaluate(grid, non_csdl=True).reshape((grid_n, grid_n, surface.num_physical_dimensions))
+    vertices = []
+    faces = []
+    for u_index in range(grid_n):
+        for v_index in range(grid_n):
+            vertex = tuple(points[u_index, v_index, :])
+            vertices.append(vertex)
+            if u_index != 0 and v_index != 0:
+                face = tuple((
+                    (u_index-1)*grid_n+(v_index-1)+offset,
+                    (u_index-1)*grid_n+(v_index)+offset,
+                    (u_index)*grid_n+(v_index)+offset,
+                    (u_index)*grid_n+(v_index-1)+offset,
+                ))
+                faces.append(face)
+    if color is not None:
+        c_points = color.evaluate(grid, non_csdl=True)
+        if len(c_points.shape) > 1:
+            if c_points.shape[1] > 1:
+                c_points = np.linalg.norm(c_points, axis=1)
+        return vertices, faces, c_points
+    return vertices, faces
 
 # NOTE: Vedo doesn't seem to have volume plotting? So just have the volumes call the plot_surface function for the outer surfaces.
 # def plot_volume(self, points:np.ndarray, plot_types:list=['surfaces'],
