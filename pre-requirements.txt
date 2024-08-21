@@ -1,3 +1,0 @@
-# requirements required to install requirements
-cython==0.29.28
-numpy
