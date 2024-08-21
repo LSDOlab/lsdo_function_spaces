@@ -342,10 +342,10 @@ def test_single_surface():
     # new_b_spline.plot()
     projected_points_parametric = new_b_spline.project(points=projecting_points, plot=False, grid_search_density_parameter=1)
     projected_points = new_b_spline.evaluate(parametric_coordinates=projected_points_parametric).value
-    new_b_spline_plot = new_b_spline.plot(show=False, opacity=0.8)
-    projected_points_plot = vedo.Points(projected_points, r=10, c='g')
-    projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
-    plotter = vedo.Plotter()
+    # new_b_spline_plot = new_b_spline.plot(show=False, opacity=0.8)
+    # projected_points_plot = vedo.Points(projected_points, r=10, c='g')
+    # projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
+    # plotter = vedo.Plotter()
     # plotter.show(new_b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
 
     # num_fitting_points = 25
@@ -416,11 +416,11 @@ def test_multiple_surfaces():
         projected_points_parametric = my_b_spline_surface_set.project(points=projecting_points, plot=False, grid_search_density_parameter=1)
     t2 = time.time()
     print('average time: ', (t2-t1)/num_trials)
-    projected_points = my_b_spline_surface_set.evaluate(parametric_coordinates=projected_points_parametric, plot=True).value
-    new_b_spline_plot = my_b_spline_surface_set.plot(show=False, opacity=0.8)
-    projected_points_plot = vedo.Points(projected_points, r=10, c='g')
-    projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
-    plotter = vedo.Plotter()
+    projected_points = my_b_spline_surface_set.evaluate(parametric_coordinates=projected_points_parametric, plot=False).value
+    # new_b_spline_plot = my_b_spline_surface_set.plot(show=False, opacity=0.8)
+    # projected_points_plot = vedo.Points(projected_points, r=10, c='g')
+    # projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
+    # plotter = vedo.Plotter()
     # plotter.show(new_b_spline_plot, projected_points_plot, projecting_points_plot, axes=1, viewup='z')
 
 
