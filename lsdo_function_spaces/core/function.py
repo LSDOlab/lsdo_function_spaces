@@ -35,7 +35,7 @@ class Function:
     name : str = None
 
     def __post_init__(self):
-        if isinstance(self.coefficients, np.ndarray):
+        if not isinstance(self.coefficients, csdl.Variable):
             self.coefficients = csdl.Variable(value=self.coefficients)
 
         if len(self.coefficients.shape) == 1:
