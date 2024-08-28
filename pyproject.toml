@@ -39,5 +39,8 @@ docs = [
 [tool.setuptools.dynamic]
 version = {attr = "lsdo_function_spaces.__version__"}
 
+[tool.setuptools]
+package-dir = {"" = "."}
+
 [tool.setuptools.packages.find]
 exclude = ["tutorials"]
