@@ -4,7 +4,7 @@
 import numpy as np
 from typing import Union
 
-def show_plot(plotting_elements:list, title:str, axes:bool=True, view_up:str="z", interactive:bool=True):
+def show_plot(plotting_elements:list, title:str, axes:bool=False, view_up:str="z", interactive:bool=True):
     '''
     Shows the plot.
 

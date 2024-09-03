@@ -827,10 +827,13 @@ class Function:
                 function_values = function_values.reshape((-1,1))   # Here we want the physical dimension separate for vedo so put it back
 
             # scale u axis to be more visually clear based on scaling of parameter
-            u_axis_scaling = np.max(function_values) - np.min(function_values)
-            if u_axis_scaling != 0:
-                parametric_coordinates = parametric_coordinates * u_axis_scaling
-            points = np.hstack((parametric_coordinates, function_values))
+            if function_values.shape[-1] < 3:   # Plot against u coordinate
+                u_axis_scaling = np.max(function_values) - np.min(function_values)
+                if u_axis_scaling != 0:
+                    parametric_coordinates = parametric_coordinates * u_axis_scaling
+                points = np.hstack((parametric_coordinates, function_values))
+            else:
+                points = function_values
 
             if isinstance(color, Function):
                 if color.space.num_parametric_dimensions != 1:

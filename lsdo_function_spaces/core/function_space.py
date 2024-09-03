@@ -8,7 +8,7 @@ from typing import Union
 
 '''
 NOTE: To implement a function space (for instance, B-splines), all that must be implemented is the evaluation of the basis functions 
-    and assembly into an evaluation matrix.
+    and assembly into a basis matrix.
 '''
 
 
@@ -32,6 +32,9 @@ class FunctionSpace:
         self.num_parametric_dimensions = num_parametric_dimensions # This is really useful for the function methods
         self.coefficients_shape = coefficients_shape
 
+        if isinstance(self.coefficients_shape, int):
+            self.coefficients_shape = (self.coefficients_shape,)
+
 
     def generate_parametric_grid(self, grid_resolution:tuple) -> np.ndarray:
         '''
@@ -47,8 +50,10 @@ class FunctionSpace:
         np.ndarray -- shape=(num_points, num_parametric_dimensions)
             The parametric grid.
         '''
-        if isinstance(grid_resolution, int) or len(grid_resolution) == 1:
+        if isinstance(grid_resolution, int):
             grid_resolution = (grid_resolution,)*self.num_parametric_dimensions
+        if len(grid_resolution) == 1 and self.num_parametric_dimensions > 1:
+            grid_resolution = grid_resolution * self.num_parametric_dimensions
 
         mesh_grid_input = []
         for dimension_index in range(self.num_parametric_dimensions):
