@@ -446,7 +446,7 @@ class FunctionSet:
 
         Parameters
         ----------
-        new_function_spaces : list[FunctionSpace] -- list length=number of functions being refit
+        new_function_spaces : dict[ind, FunctionSpace] -- dictionary length=number of functions being refit
             The new function spaces that the functions will be picked from.
         indices_of_functions_to_refit : list[int] = None -- list length=number of functions being refit
             The indices of the functions to refit. If None, all the functions are refit.
@@ -464,16 +464,14 @@ class FunctionSet:
         '''
 
         if indices_of_functions_to_refit is None:
-            indices_of_functions_to_refit = np.arange(len(self.functions))
+            indices_of_functions_to_refit = list(self.functions)
 
         if isinstance(new_function_spaces, lfs.FunctionSpace):
-            new_function_spaces = [new_function_spaces] * len(self.functions)
+            new_function_spaces = {ind:new_function_spaces for ind in self.functions}
 
-        if len(new_function_spaces) != len(indices_of_functions_to_refit) and len(new_function_spaces) != 1:
+        if len(new_function_spaces) != len(indices_of_functions_to_refit):
             raise ValueError("The number of new function spaces must match the number of functions to refit. " +
                              f"({len(new_function_spaces)} != {len(indices_of_functions_to_refit)})")
-        elif len(new_function_spaces) == 1:
-            new_function_spaces = new_function_spaces * len(indices_of_functions_to_refit)
 
         new_functions = {}
         for i, function in self.functions.items():
