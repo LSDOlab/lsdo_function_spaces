@@ -822,7 +822,7 @@ class Function:
         if point_type == 'evaluated_points':
             num_points = 100
             parametric_coordinates = np.linspace(0., 1., num_points).reshape((-1,1))
-            function_values = self.evaluate(parametric_coordinates).value
+            function_values = self.evaluate(parametric_coordinates, non_csdl=True)
             if len(function_values.shape) == 1:
                 function_values = function_values.reshape((-1,1))   # Here we want the physical dimension separate for vedo so put it back
 
@@ -839,7 +839,7 @@ class Function:
                 if color.space.num_parametric_dimensions != 1:
                     raise ValueError("The color function must be 1D to plot as a curve.")
                 
-                color = color.evaluate(parametric_coordinates).value
+                color = color.evaluate(parametric_coordinates, non_csdl=True)
         elif point_type == 'coefficients':
             # NOTE: Check this line below!! I think this should really be the knot vector but I don't want to hardcode the existence of the knot vector.
             parametric_coordinates = np.linspace(0., 1., self.coefficients.shape[0]).reshape((-1,1))
@@ -858,7 +858,7 @@ class Function:
                 color = color.coefficients.value
                 if color.size != points.size:
                     # If the number of coefficients are different, just evaluate the color function at the locations of the coefficients of the function.
-                    color = color.evaluate(parametric_coordinates).value
+                    color = color.evaluate(parametric_coordinates, non_csdl=True)
         else:
             raise ValueError("Invalid point type. Must be 'evaluated_points' or 'coefficients'.")
         # endregion Generate the points to plot
@@ -921,14 +921,14 @@ class Function:
                 parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
             parametric_coordinates = np.hstack(parametric_coordinates_tuple)
             
-            function_values = self.evaluate(parametric_coordinates).value.reshape((num_points,num_points,-1))
+            function_values = self.evaluate(parametric_coordinates, non_csdl=True).reshape((num_points,num_points,-1))
             points = function_values
 
             if isinstance(color, Function):
                 color_is_function = True
                 if color.space.num_parametric_dimensions != 2:
                     raise ValueError("The color function must be 2D to plot as a surface.")
-                color = color.evaluate(parametric_coordinates).value
+                color = color.evaluate(parametric_coordinates, non_csdl=True)
                 color_max = np.max(color)
                 color_min = np.min(color)
                 if len(color.shape) > 1:
@@ -952,7 +952,7 @@ class Function:
                     for dimensions_index in range(self.space.num_parametric_dimensions):
                         parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
                     parametric_coordinates = np.hstack(parametric_coordinates_tuple)
-                    color = color.evaluate(parametric_coordinates).value
+                    color = color.evaluate(parametric_coordinates, non_csdl=True)
         else:
             raise ValueError("Invalid point type. Must be 'evaluated_points' or 'coefficients'.")
         # endregion Generate the points to plot
@@ -1036,7 +1036,7 @@ class Function:
             
             points = []
             for parametric_coordinate_set in parametric_coordinates:
-                points.append(self.evaluate(parametric_coordinates=parametric_coordinate_set).value.reshape((num_points,num_points,-1)))
+                points.append(self.evaluate(parametric_coordinates=parametric_coordinate_set, non_csdl=True).reshape((num_points,num_points,-1)))
 
             plotting_colors = []
             if isinstance(color, Function):
@@ -1044,7 +1044,7 @@ class Function:
                     raise ValueError("The color function must be 3D to plot as a volume.")
                 
                 for parametric_coordinate_set in parametric_coordinates:
-                    plotting_colors.append(color.evaluate(parametric_coordinates=parametric_coordinate_set).value)
+                    plotting_colors.append(color.evaluate(parametric_coordinates=parametric_coordinate_set, non_csdl=True))
                 color = plotting_colors
 
         elif point_type == 'coefficients':
