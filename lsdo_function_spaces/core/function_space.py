@@ -35,6 +35,9 @@ class FunctionSpace:
         if isinstance(self.coefficients_shape, int):
             self.coefficients_shape = (self.coefficients_shape,)
 
+        if len(self.coefficients_shape) == 1:
+            self.coefficients_shape = self.coefficients_shape*self.num_parametric_dimensions
+
 
     def generate_parametric_grid(self, grid_resolution:tuple) -> np.ndarray:
         '''
