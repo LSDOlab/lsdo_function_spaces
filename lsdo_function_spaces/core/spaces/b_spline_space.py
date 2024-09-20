@@ -47,9 +47,9 @@ class BSplineSpace(FunctionSpace):
 
         for i in range(self.num_parametric_dimensions):
             if self.degree[i] < 0:
-                raise ValueError('Degree must be non-negative.')
+                raise ValueError(f'Degree in axis {i} must be non-negative.')
             if self.degree[i] > self.coefficients_shape[i]:
-                raise ValueError('Degree must be less than the number of coefficients in each dimension.')
+                raise ValueError(f'Degree in axis {i} must be less than the number of coefficients in each dimension.')
 
         if self.knots is None:
             # If knots are None, generate open uniform knot vectors
