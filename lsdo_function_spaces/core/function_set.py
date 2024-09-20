@@ -671,7 +671,8 @@ class FunctionSet:
                              f"({len(coefficients)} != {len(function_indices)})")
 
         for i, function_index in enumerate(function_indices):
-            self.functions[function_index].coefficients = coefficients[i]
+            coefficients_shape = self.functions[function_index].coefficients.shape
+            self.functions[function_index].coefficients = coefficients[i].reshape(coefficients_shape)
 
 
     def get_function_indices(self, function_names:list[str]) -> list[int]:
