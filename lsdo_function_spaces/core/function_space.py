@@ -198,8 +198,8 @@ class FunctionSpace:
 
 
     
-    def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
-            L2_regularization_parameter:float=None, constraint:callable=None) -> csdl.Variable:
+    def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None,
+            regularization_parameter:float=None, constraint:callable=None) -> csdl.Variable:
         '''
         Fits the function to the given data. If derivatives are used, the parametric derivative orders must be provided. 
 
@@ -211,7 +211,7 @@ class FunctionSpace:
             The parametric coordinates of the data.
         parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
             The derivative orders to fit.
-        L2_regularization_parameter : float = None
+        regularization_parameter : float = None
             The regularization parameter to use for fitting. If None, no regularization is used.
         constraint : callable = None
             The constraint to use for fitting. Takes in a function and returns the constraint residual.
@@ -236,10 +236,10 @@ class FunctionSpace:
 
         # compute residual
         test_values = self._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
-        if L2_regularization_parameter is None:
+        if regularization_parameter is None:
             residual = csdl.sum((test_values - values)**2)
         else:
-            residual = csdl.sum((test_values - values)**2) + L2_regularization_parameter * csdl.sum(coefficients**2)
+            residual = csdl.sum((test_values - values)**2) + regularization_parameter * csdl.sum(coefficients**2)
 
         # create and run optimization
         optimizer = NewtonOptimizer()
@@ -252,8 +252,8 @@ class FunctionSpace:
         return coefficients
 
 
-    def fit_function(self, values:np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
-            L2_regularization_parameter:float=None, constraint:callable=None) -> lfs.Function:
+    def fit_function(self, values:np.ndarray, parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None,
+                     regularization_parameter:float=None, constraint:callable=None) -> lfs.Function:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
         parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
@@ -267,7 +267,7 @@ class FunctionSpace:
             The parametric coordinates of the data.
         parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
             The derivative orders to fit.
-        L2_regularization_parameter : float = None
+        regularization_parameter : float = None
             The regularization parameter to use for fitting. If None, no regularization is used.
         constraint : callable = None
             The constraint to use for fitting. Takes in a function and returns the constraint residual.
@@ -278,7 +278,7 @@ class FunctionSpace:
         lfs.Function
         '''
         coefficients = self.fit(values=values, parametric_coordinates=parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders,
-                                L2_regularization_parameter=L2_regularization_parameter, constraint=constraint)
+                                regularization_parameter=regularization_parameter, constraint=constraint)
         function = lfs.Function(space=self, coefficients=coefficients)
         return function
 
@@ -332,8 +332,8 @@ class FunctionSpace:
 
 class LinearFunctionSpace(FunctionSpace):
 
-    def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
-            basis_matrix:Union[sps.csc_matrix, np.ndarray]=None, regularization_parameter:float=None) -> csdl.Variable:
+    def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None,
+            regularization_parameter:float=None, constraint:callable=None) -> csdl.Variable:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
         parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
@@ -357,11 +357,9 @@ class LinearFunctionSpace(FunctionSpace):
         csdl.Variable
             The coefficients of the fitted function.
         '''
-        if parametric_coordinates is None and basis_matrix is None:
-            raise ValueError("Either parametric coordinates or an evaluation matrix must be provided.")
-        if parametric_coordinates is not None and basis_matrix is not None:
-            print("Warning: Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
-            # raise Warning("Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
+        if constraint is not None:
+            return super().fit(values=values, parametric_coordinates=parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders,
+                               regularization_parameter=regularization_parameter, constraint=constraint)
 
         if len(values.shape) > 2:
             values = values.reshape((-1, values.shape[-1]))
@@ -418,4 +416,3 @@ class LinearFunctionSpace(FunctionSpace):
 
         return coefficients
         # raise NotImplementedError(f"Fit method must be implemented in {type(self)} class.")
-
