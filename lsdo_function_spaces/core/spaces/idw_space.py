@@ -1,12 +1,12 @@
 import numpy as np
 import scipy.sparse as sps
-from lsdo_function_spaces import FunctionSpace, Function
+from lsdo_function_spaces import LinearFunctionSpace, Function
 from scipy.spatial.distance import cdist
 from dataclasses import dataclass
 from typing import Union
 import csdl_alpha as csdl
 
-class IDWFunctionSpace(FunctionSpace):
+class IDWFunctionSpace(LinearFunctionSpace):
     """
     Inverse Distance Weighting (IDW) Function Space.
 

@@ -1,11 +1,11 @@
 import numpy as np
 import scipy.sparse as sps
-from lsdo_function_spaces import FunctionSpace, Function
+from lsdo_function_spaces import LinearFunctionSpace, Function
 from scipy.spatial.distance import cdist
 from dataclasses import dataclass
 from typing import Union
 
-class ConstantSpace(FunctionSpace):
+class ConstantSpace(LinearFunctionSpace):
     """
     Constant Function Space.
 

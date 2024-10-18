@@ -5,7 +5,7 @@ num_workers = multiprocessing.cpu_count()
 # core stuff
 from .core.function import Function
 from .core.function_set import FunctionSet
-from .core.function_space import FunctionSpace
+from .core.function_space import FunctionSpace, LinearFunctionSpace
 
 # spaces
 from .core.function_set_space import FunctionSetSpace
