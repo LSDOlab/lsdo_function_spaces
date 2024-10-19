@@ -51,6 +51,8 @@ class RBFFunctionSpace(LinearFunctionSpace):
             linspaces = [np.linspace(0, 1, n) for n in self.grid_size]
             self.points = np.array(np.meshgrid(*linspaces)).T.reshape(-1, num_parametric_dimensions)
 
+        super().__init__(num_parametric_dimensions, self.points.shape[0])
+
     def compute_basis_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders: np.ndarray=None, expansion_factor:int=None) -> np.ndarray:
         """
         Compute the basis matrix for the given parametric coordinates.
@@ -84,59 +86,51 @@ class RBFFunctionSpace(LinearFunctionSpace):
             parametric_coordinates = parametric_coordinates.reshape(1, -1)
 
         dist = cdist(parametric_coordinates, self.points)
-        phi = getattr(self, f'_{self.radial_function}')(dist, self.epsilon)
+        phi = getattr(self, f'_{self.radial_function}')(dist)
 
         return phi
 
-    def _gaussian(x, epsilon=1):
-        return np.exp(-(epsilon*x)**2)
+    def _gaussian(self, x):
+        return np.exp(-(self.epsilon*x)**2)
 
-    def _polyharmonic_spline(x, k=2):
-        if k % 2 == 0:
-            return x**(k-1) * np.log(x**x)
+    def _polyharmonic_spline(self, x):
+        if self.k % 2 == 0:
+            return x**(self.k-1) * np.log(x**x)
         else:
-            return x**k
+            return x**self.k
 
-    def _inverse_quadratic(x, epsilon=1):
-        return 1/(1 + (epsilon*x)**2)
+    def _inverse_quadratic(self, x):
+        return 1/(1 + (self.epsilon*x)**2)
 
-    def _inverse_multiquadric(x, epsilon=1):
-        return 1/np.sqrt(1 + (epsilon*x)**2)
+    def _inverse_multiquadric(self, x):
+        return 1/np.sqrt(1 + (self.epsilon*x)**2)
 
-    def _bump(x, epsilon=1):
-        if x < 1/epsilon:
-            return np.exp(1/(1-(epsilon*x)**2))
+    def _bump(self, x):
+        if x < 1/self.epsilon:
+            return np.exp(1/(1-(self.epsilon*x)**2))
         else:
             return 0
 
 
 
-def test_idw_space():
+def test_rbf_space():
     import numpy as np
     import csdl_alpha as csdl
     
     rec = csdl.Recorder(inline=True)
     rec.start()
 
-    space = IDWFunctionSpace(2, 2, grid_size=4)
+    space = RBFFunctionSpace(num_parametric_dimensions=2, 
+                             radial_function='bump',
+                             grid_size=20)
     parametric_coordinates = np.random.rand(10, 2)
     data = 10*np.random.rand(10, 1)
     function = space.fit_function(data, parametric_coordinates)
     eval_data = function.evaluate(parametric_coordinates)
 
-    space = IDWFunctionSpace(2, 2, grid_size=4, conserve=False)
-    sparse_space = IDWFunctionSpace(2, 2, grid_size=4, conserve=False, n_neighbors=3)
-    parametric_coordinates = np.random.rand(10, 2)
-    data = 10*np.random.rand(10, 1)
-    function = space.fit_function(data, parametric_coordinates)
-    eval_data = function.evaluate(parametric_coordinates)
-    sparse_function = sparse_space.fit_function(data, parametric_coordinates)
-    sparse_eval_data = sparse_function.evaluate(parametric_coordinates)
-    print('eval_data:', eval_data.value)
-    print('sparse_eval_data:', sparse_eval_data.value)
-    # print(eval_data.value - data)
+    print(eval_data.value - data)
 
     # print(function.coefficients.value)
 
 if __name__ == '__main__':
-    test_idw_space()
+    test_rbf_space()

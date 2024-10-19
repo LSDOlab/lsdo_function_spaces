@@ -167,6 +167,8 @@ class NewtonOptimizer:
             if isinstance(state, tuple):
                 self.solver.add_state(state[0], residual, initial_value=state[1])
             else:
+                if state.shape != residual.shape:
+                    residual = residual.reshape(state.shape)
                 self.solver.add_state(state, residual)
         self.has_been_setup = True
 
