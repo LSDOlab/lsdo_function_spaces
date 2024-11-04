@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.sparse as sps
-from lsdo_function_spaces import LinearFunctionSpace, Function
+from ..function_space import LinearFunctionSpace
 from scipy.spatial.distance import cdist
 from dataclasses import dataclass
 from typing import Union
@@ -8,7 +8,7 @@ import csdl_alpha as csdl
 
 class RBFFunctionSpace(LinearFunctionSpace):
     """
-    Inverse Distance Weighting (IDW) Function Space.
+    Radial Basis Function (RBF) Function Space.
 
     This function space represents a grid of points in a parametric space using the Inverse Distance Weighting method.
     It provides methods to compute the basis matrix and the fitting map.
@@ -106,6 +106,9 @@ class RBFFunctionSpace(LinearFunctionSpace):
         return 1/np.sqrt(1 + (self.epsilon*x)**2)
 
     def _bump(self, x):
+
+        return np.where(x < 1/self.epsilon, np.exp(1/(1-(self.epsilon*x)**2)), 0)
+
         if x < 1/self.epsilon:
             return np.exp(1/(1-(self.epsilon*x)**2))
         else:

@@ -15,26 +15,26 @@ import lsdo_function_spaces as lfs
 
 
 
-@dataclass
 class Function:
-    '''
-    Function class. This class is used to represent a function in a given function space. The function space is used to evaluate the function at
-    given coordinates, refit the function, and project points onto the function.
+    def __init__(self, space:lfs.FunctionSpace, coefficients:csdl.Variable, name:str=None):
+        '''
+        Function class. This class is used to represent a function in a given function space. The function space is used to evaluate the function at
+        given coordinates, refit the function, and project points onto the function.
 
-    Attributes
-    ----------
-    space : lfs.FunctionSpace
-        The function space in which the function resides.
-    coefficients : csdl.Variable -- shape=coefficients_shape
-        The coefficients of the function.
-    name : str = None
-        If applicable, the name of the function.
-    '''
-    space: lfs.FunctionSpace
-    coefficients: csdl.Variable
-    name : str = None
+        Attributes
+        ----------
+        space : lfs.FunctionSpace
+            The function space in which the function resides.
+        coefficients : csdl.Variable -- shape=coefficients_shape
+            The coefficients of the function.
+        name : str = None
+            If applicable, the name of the function.
+        '''
+        
+        self.space = space
+        self.coefficients = coefficients
+        self.name = name
 
-    def __post_init__(self):
         if not isinstance(self.coefficients, csdl.Variable):
             self.coefficients = csdl.Variable(value=self.coefficients)
 
@@ -89,7 +89,7 @@ class Function:
             coefficients = coefficients.reshape((basis_matrix.shape[1], self.num_physical_dimensions))
 
         return basis_matrix, coefficients
-
+    
     def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
                  plot:bool=False, non_csdl:bool=False) -> csdl.Variable:
         '''
@@ -119,39 +119,7 @@ class Function:
         if non_csdl and isinstance(coefficients, csdl.Variable):
             coefficients = coefficients.value
 
-        basis_matrix = self.space.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
-        # # values = basis_matrix @ coefficients
-        if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
-            if coefficients.shape != (basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]):
-                coefficients = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
-            # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
-            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients.shape[1])))
-            for i in csdl.frange(coefficients.shape[1]):
-                coefficients_column = coefficients[:,i].reshape((coefficients.shape[0],1))
-                values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
-        else:
-            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], self.num_physical_dimensions))
-
-        if len(parametric_coordinates.shape) == 1:
-            pass    # Come back to this case
-
-        if values.shape != parametric_coordinates.shape[:-1] + (self.num_physical_dimensions,):
-            values = values.reshape(parametric_coordinates.shape[:-1] + (self.num_physical_dimensions,))
-
-        if values.shape[0] == 1:
-            values = values[0]  # Get rid of the extra dimension if only one point is evaluated
-        if values.shape[-1] == 1 and len(values.shape) > 1:
-            values = values.reshape(values.shape[:-1])   # Get rid of the extra dimension if only one physical dimension is evaluated
-        elif values.shape[-1] == 1:
-            values = values[0]
-        
-            # values = csdl.sparse.matvec or matmat(basis_matrix, coefficients_reshaped)
-        # elif isinstance(coefficients, csdl.Variable):
-        #     values = csdl.matvec(basis_matrix, coefficients)
-        # else:
-        #     values = basis_matrix.dot(coefficients.reshape((basis_matrix.shape[1], -1)))
-
-        # values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], -1))
+        values = self.space._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
 
         if plot:
             # Plot the function
@@ -164,39 +132,7 @@ class Function:
             lfs.plot_points(vals, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
 
         return values
-    
-    # def integrate(self, area, grid_n=10):
-    #     # Generate parametric grid
-    #     # parametric_grid = self.space.generate_parametric_grid(grid_n)
-    #     parametric_grid = np.zeros((grid_n, grid_n, 2))
-    #     for i in range(grid_n):
-    #         for j in range(grid_n):
-    #             parametric_grid[i,j] = np.array([i/(grid_n-1), j/(grid_n-1)])
 
-    #     # print('parametric grid shape', parametric_grid.shape)
-    #     # parametric_grid = parametric_grid.reshape(grid_n, grid_n, -1)        
-
-    #     # Get the parametric coordinates of the grid center points
-    #     grid_centers = np.zeros((grid_n-1, grid_n-1, self.space.num_parametric_dimensions))
-    #     for i in range(grid_n-1):
-    #         for j in range(grid_n-1):
-    #             grid_centers[i,j] = (parametric_grid[i+1, j] + parametric_grid[i, j] + parametric_grid[i, j+1] + parametric_grid[i+1, j+1])/4
-    #     # Evaluate grid of points
-    #     grid_values = area.evaluate(parametric_coordinates=parametric_grid.reshape(-1,2)).reshape((grid_n, grid_n, -1))
-    #     grid_center_values = self.evaluate(parametric_coordinates=grid_centers.reshape(-1,2)).reshape((grid_n-1, grid_n-1, self.num_physical_dimensions))
-
-    #     values = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1)))
-    #     for i in csdl.frange(grid_n-1):
-    #         for j in csdl.frange(grid_n-1):
-    #             # Compute the area of the quadrilateral
-    #             area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]))/2
-    #             area_2 = csdl.norm(csdl.cross(grid_values[i,j+1]-grid_values[i+1,j+1], grid_values[i+1,j]-grid_values[i+1,j+1]))/2
-    #             area = area_1 + area_2
-
-    #             values = values.set(csdl.slice[i,j], grid_center_values[i,j]*area)
-
-    #     return values.reshape((-1, self.num_physical_dimensions)), grid_centers.reshape(-1, self.space.num_parametric_dimensions)
-    
     def integrate(self, area, grid_n=10, quadrature_order=2):
         """
         Integrate the function over the area (2D). Uses gaussian quadrature for the integration.
@@ -253,8 +189,6 @@ class Function:
                 grid_centers[i,j] = (parametric_grid[i+1, j] + parametric_grid[i, j] + parametric_grid[i, j+1] + parametric_grid[i+1, j+1])/4
 
         return output.reshape((-1, self.num_physical_dimensions)), grid_centers.reshape(-1, self.space.num_parametric_dimensions) 
-
-
 
     def refit(self, new_function_space:lfs.FunctionSpace, grid_resolution:tuple=None, 
               parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
@@ -320,7 +254,6 @@ class Function:
         
         new_function = Function(space=new_function_space, coefficients=coefficients)
         return new_function
-
 
     def project(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, force_reproject:bool=False, do_pickles=True) -> csdl.Variable:
@@ -632,7 +565,6 @@ class Function:
 
         return current_guess
 
-
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
                                          max_newton_iterations:int=100, newton_tolerance:float=1e-6, force_reproject:bool=False) -> bool:
         # name_space = f'{self.name}'
@@ -677,7 +609,6 @@ class Function:
             Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
 
             return name_space_dict, long_name_space
-
 
     def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
               opacity:float=1., color:str|Function='#00629B', color_map:str='jet', surface_texture:str="",
@@ -755,7 +686,6 @@ class Function:
             return plotting_elements, cmin, cmax
         return plotting_elements
 
-
     def plot_points(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet', 
                     size:float=10., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
@@ -785,7 +715,6 @@ class Function:
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
         raise NotImplementedError("This function is not implemented yet.")
-
 
     def plot_curve(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet',
                    line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
@@ -868,7 +797,6 @@ class Function:
                                           additional_plotting_elements=plotting_elements, show=show)
         return plotting_elements
     
-
     def plot_surface(self, point_type:str='evaluated_points', plot_types:list=['function'], opacity:float=1., color:str|lfs.Function='#00629B',
                         color_map:str='jet', surface_texture:str="", line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
         '''
@@ -977,7 +905,6 @@ class Function:
             return plotting_elements, color_min, color_max
         return plotting_elements
     
-
     def plot_volume(self, point_type:str='evaluated_points', plot_types:list=['function'], opacity:float=1., color:str|lfs.Function='#00629B',
                         color_map:str='jet', surface_texture:str="", line_width:float=3., additional_plotting_elements:list=[], show:bool=True):
         '''
@@ -1094,3 +1021,37 @@ class Function:
             else:
                 pf.show_plot(plotting_elements, title="Volume", axes=1, interactive=True)
         return plotting_elements
+
+    def __add__(self, other:Function) -> Function:
+        return lfs.operations.add(self, other)
+    
+    def __radd__(self, other:Function) -> Function:
+        return lfs.operations.add(self, other)
+    
+    def __sub__(self, other:Function) -> Function:
+        return lfs.operations.sub(self, other)
+    
+    def __rsub__(self, other:Function) -> Function:
+        return lfs.operations.sub(other, self)
+    
+    def __mul__(self, other:Function) -> Function:
+        return lfs.operations.mult(self, other)
+    
+    def __rmul__(self, other:Function) -> Function:
+        return lfs.operations.mult(self, other)
+    
+    def __truediv__(self, other:Function) -> Function:
+        return lfs.operations.div(self, other)
+    
+    def __rtruediv__(self, other:Function) -> Function:
+        return lfs.operations.div(other, self)
+    
+    def __pow__(self, other:Function) -> Function:
+        return lfs.operations.power(self, other)
+    
+    def __rpow__(self, other:Function) -> Function:
+        return lfs.operations.power(other, self)
+    
+    def __neg__(self) -> Function:
+        return lfs.operations.negate(self)
+        

@@ -1,7 +1,8 @@
 import numpy as np
 import scipy.sparse as sps
-from lsdo_function_spaces import LinearFunctionSpace, Function
+from lsdo_function_spaces import Function
 import csdl_alpha as csdl
+from ..function_space import LinearFunctionSpace
 
 from dataclasses import dataclass
 

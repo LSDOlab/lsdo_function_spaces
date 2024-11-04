@@ -228,9 +228,6 @@ class FunctionSet:
             function1.coefficients = coeffs1
             function2.coefficients = coeffs2
 
-
-
-
     def stack_coefficients(self) -> csdl.Variable:
         '''
         Stacks the coefficients of the functions in the function set.
@@ -487,7 +484,6 @@ class FunctionSet:
         new_function_set = lfs.FunctionSet(functions=new_functions, function_names=self.function_names)
         return new_function_set
 
-
     def project(self, points:np.ndarray, num_workers:int=None, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, extrema=False, force_reprojection=False,
                 priority_inds=None, priority_eps=1e-3) -> csdl.Variable:
@@ -605,8 +601,6 @@ class FunctionSet:
 
         return parametric_coordinates
 
-
-
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
                                           max_newton_iterations:int=100, newton_tolerance:float=1e-6, extrema:bool=False, 
                                           priority_inds=None, priority_eps=1e-3,
@@ -651,7 +645,6 @@ class FunctionSet:
 
             return name_space_dict, long_name_space
 
-
     def set_coefficients(self, coefficients:list[csdl.Variable], function_indices:list[int]=None) -> None:
         '''
         Sets the coefficients of the functions in the function set with the given indices.
@@ -674,7 +667,6 @@ class FunctionSet:
             coefficients_shape = self.functions[function_index].coefficients.shape
             self.functions[function_index].coefficients = coefficients[i].reshape(coefficients_shape)
 
-
     def get_function_indices(self, function_names:list[str]) -> list[int]:
         '''
         Gets the indices of the functions in the function set with the given names.
@@ -694,7 +686,6 @@ class FunctionSet:
             function_indices.append([self.function_names.keys()][[self.function_names.values()].index(function_name)])
         return function_indices
     
-
     def search_for_function_indices(self, search_strings:list[str], ignore_names:list[str]=[]) -> list[int]:
         '''
         Searches for the indices of the functions in the function set with the given search string.
@@ -718,7 +709,6 @@ class FunctionSet:
                 function_indices.append(i)
         return function_indices
     
-
     def create_subset(self, function_indices:list[int]=None, function_search_names:list[str]=None, ignore_names:list[str]=[], name:str=None) -> lfs.FunctionSet:
         '''
         Creates a subset of the function set with the given indices. Either the function indices or the function search names must be provided.
@@ -798,7 +788,6 @@ class FunctionSet:
             plotter = vedo.Plotter()
             plotter.show(mesh)
         return mesh
-
 
     def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
               opacity:float=1., color:str|lfs.FunctionSet='#00629B', color_map:str='jet', surface_texture:str="",
@@ -906,6 +895,39 @@ class FunctionSet:
         '''
 
         return self.space.generate_parametric_grid(grid_resolution=grid_resolution)
+
+    def __add__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.add(self, other)
+    
+    def __radd__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.add(self, other)
+    
+    def __sub__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.sub(self, other)
+    
+    def __rsub__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.sub(other, self)
+    
+    def __mul__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.mult(self, other)
+    
+    def __rmul__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.mult(self, other)
+    
+    def __truediv__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.div(self, other)
+    
+    def __rtruediv__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.div(other, self)
+    
+    def __pow__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.power(self, other)
+    
+    def __rpow__(self, other:FunctionSet) -> FunctionSet:
+        return lfs.operations.power(other, self)
+    
+    def __neg__(self) -> FunctionSet:
+        return lfs.operations.negate(self)
 
 if __name__ == "__main__":
     import csdl_alpha as csdl

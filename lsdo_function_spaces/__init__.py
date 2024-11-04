@@ -14,8 +14,12 @@ from .core.spaces.polynomial_space import PolynomialSpace
 from .core.spaces.conditional_space import ConditionalSpace
 from .core.spaces.idw_space import IDWFunctionSpace
 from .core.spaces.constant_space import ConstantSpace
+from .core.spaces.rbf_space import RBFFunctionSpace
 
 # utilities
 from .utils.plotting_functions import plot_points, plot_curve, plot_surface, show_plot
 from .utils.file_io import import_file
 from .utils.utility_functions import create_b_spline_from_corners, create_enclosure_block
+
+# operations
+from .core.operations import operations

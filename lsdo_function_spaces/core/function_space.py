@@ -230,7 +230,7 @@ class FunctionSpace:
         # compute constraints
         if constraint is not None:
             test_function = lfs.Function(space=self, coefficients=coefficients)
-            constraint_res = constraint(test_function)
+            constraint_res = constraint(test_function) # TODO: name?
         else: 
             constraint_res = None
 
@@ -434,10 +434,6 @@ class LinearFunctionSpace(FunctionSpace):
             The order of the parametric derivatives to evaluate.
         coefficients : csdl.Variable = None -- shape=coefficients_shape
             The coefficients of the function.
-        plot : bool = False
-            Whether or not to plot the function with the points from the result of the evaluation.
-        non_csdl : bool = False
-            If true, will run numpy computations instead of csdl computations, and return a numpy array.
 
         Returns
         -------

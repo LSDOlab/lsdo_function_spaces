@@ -10,7 +10,18 @@ file_name = 'rectangular_wing.stp'
 wing = lfs.import_file(file_path + file_name, parallelize=False)
 
 # Plot the wing
-# wing.plot()
+wing.plot()
+
+fs = lfs.RBFFunctionSpace(num_parametric_dimensions=2, radial_function='polyharmonic_spline', grid_size=(20,20))
+new_wing = wing.refit(fs, grid_resolution=(100,100))
+new_wing.plot()
+exit()
+
+wing_up = wing/2
+wing_up.plot()
+
+exit()
+
 
 # left_wing = wing.create_subset(function_search_names=[', 0'])
 # left_wing.plot()
