@@ -28,8 +28,12 @@ def create_b_spline_from_corners(corners:np.ndarray, degree:tuple=(3,), num_coef
 
     num_dimensions = len(corners.shape)-1
     
+    if isinstance(degree, int):
+        degree = (degree,)*num_dimensions
     if len(degree) != num_dimensions:
         degree = tuple(np.tile(degree, num_dimensions))
+    if isinstance(num_coefficients, int):
+        num_coefficients = (num_coefficients,)*num_dimensions
     if len(num_coefficients) != num_dimensions:
         num_coefficients = tuple(np.tile(num_coefficients, num_dimensions))
     if knot_vectors is not None:

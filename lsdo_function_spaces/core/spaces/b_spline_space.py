@@ -48,7 +48,7 @@ class BSplineSpace(FunctionSpace):
         for i in range(self.num_parametric_dimensions):
             if self.degree[i] < 0:
                 raise ValueError(f'Degree in axis {i} must be non-negative.')
-            if self.degree[i] > self.coefficients_shape[i]:
+            if self.degree[i] >= self.coefficients_shape[i]:
                 raise ValueError(f'Degree in axis {i} must be less than the number of coefficients in each dimension.')
 
         if self.knots is None:
@@ -282,8 +282,9 @@ class BSplineSpace(FunctionSpace):
         Generates the resolution of the grid search for projection.
         '''
         grid_search_resolution = []
-        for dimension_length in self.coefficients_shape:
-            grid_search_resolution.append(int(dimension_length*grid_search_density_parameter))
+        for i, dimension_length in enumerate(self.coefficients_shape):
+            degree = self.degree[i]
+            grid_search_resolution.append(int(dimension_length*degree*grid_search_density_parameter) + 1)
         return tuple(grid_search_resolution)
 
 
@@ -419,7 +420,7 @@ def test_multiple_surfaces():
     num_trials = 1
     t1 = time.time()
     for i in range(num_trials):
-        projected_points_parametric = my_b_spline_surface_set.project(points=projecting_points, plot=False, grid_search_density_parameter=1)
+        projected_points_parametric = my_b_spline_surface_set.project(points=projecting_points, plot=True, grid_search_density_parameter=1)
     t2 = time.time()
     print('average time: ', (t2-t1)/num_trials)
     projected_points = my_b_spline_surface_set.evaluate(parametric_coordinates=projected_points_parametric, plot=False).value
