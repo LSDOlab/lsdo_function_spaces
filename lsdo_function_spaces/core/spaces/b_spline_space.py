@@ -420,7 +420,7 @@ def test_multiple_surfaces():
     num_trials = 1
     t1 = time.time()
     for i in range(num_trials):
-        projected_points_parametric = my_b_spline_surface_set.project(points=projecting_points, plot=True, grid_search_density_parameter=1)
+        projected_points_parametric = my_b_spline_surface_set.project(points=projecting_points, plot=False, grid_search_density_parameter=1)
     t2 = time.time()
     print('average time: ', (t2-t1)/num_trials)
     projected_points = my_b_spline_surface_set.evaluate(parametric_coordinates=projected_points_parametric, plot=False).value
