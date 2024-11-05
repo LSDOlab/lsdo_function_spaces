@@ -442,7 +442,6 @@ class LinearFunctionSpace(FunctionSpace):
         '''
 
         basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
-        print('basis_matrix', basis_matrix.shape)
         # # values = basis_matrix @ coefficients
         if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
             if coefficients.shape != (basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]):

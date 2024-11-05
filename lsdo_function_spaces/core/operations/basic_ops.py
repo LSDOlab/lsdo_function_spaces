@@ -6,8 +6,9 @@ import functools
 import numpy as np
 from typing import Union
 
-def decorate_csdl_op(op):
+def decorate_csdl_op(op, set_kwargs={}) -> callable:
     def wrapper(*args, **kwargs) -> Union[Function, FunctionSet]:
+        kwargs = {**set_kwargs, **kwargs}
         is_set = False
         keys = []
         functions = []
@@ -43,10 +44,42 @@ def decorate_csdl_op(op):
     functools.update_wrapper(wrapper, op)
     return wrapper
 
+# Basic operations
 add = decorate_csdl_op(csdl_alpha.add)
 sub = decorate_csdl_op(csdl_alpha.sub)
 mult = decorate_csdl_op(csdl_alpha.mult)
 div = decorate_csdl_op(csdl_alpha.div)
 power = decorate_csdl_op(csdl_alpha.power)
 negate = decorate_csdl_op(csdl_alpha.negate)
+sqrt = decorate_csdl_op(csdl_alpha.sqrt)
+exp = decorate_csdl_op(csdl_alpha.exp)
+log = decorate_csdl_op(csdl_alpha.log)
 
+# min/max
+absolute = decorate_csdl_op(csdl_alpha.absolute)
+maximum = decorate_csdl_op(csdl_alpha.maximum, set_kwargs={'axes': (1,)})
+minimum = decorate_csdl_op(csdl_alpha.minimum, set_kwargs={'axes': (1,)})
+average = decorate_csdl_op(csdl_alpha.average, set_kwargs={'axes': (1,)})
+sum = decorate_csdl_op(csdl_alpha.sum, set_kwargs={'axes': (1,)})
+argsum = decorate_csdl_op(csdl_alpha.sum)
+product = decorate_csdl_op(csdl_alpha.product, set_kwargs={'axes': (1,)})
+
+# Vector operations
+tensordot = decorate_csdl_op(csdl_alpha.tensordot, set_kwargs={'axes': (1,)})
+cross = decorate_csdl_op(csdl_alpha.cross, set_kwargs={'axis': 1})
+norm = decorate_csdl_op(csdl_alpha.norm, set_kwargs={'axes': (1,)})
+
+# Trigonometric functions
+sin = decorate_csdl_op(csdl_alpha.sin)
+cos = decorate_csdl_op(csdl_alpha.cos)
+tan = decorate_csdl_op(csdl_alpha.tan)
+arcsin = decorate_csdl_op(csdl_alpha.arcsin)
+arccos = decorate_csdl_op(csdl_alpha.arccos)
+arctan = decorate_csdl_op(csdl_alpha.arctan)
+sinh = decorate_csdl_op(csdl_alpha.sinh)
+cosh = decorate_csdl_op(csdl_alpha.cosh)
+tanh = decorate_csdl_op(csdl_alpha.tanh)
+
+# Other
+bessel = decorate_csdl_op(csdl_alpha.bessel)
+# concatenate = decorate_csdl_op(csdl_alpha.concatenate, set_kwargs={'axis': 1}) # the fact that the input is a list of functions is a problem

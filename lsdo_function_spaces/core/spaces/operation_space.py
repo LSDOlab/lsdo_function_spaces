@@ -56,9 +56,9 @@ class OperationFunctionSpace(FunctionSpace):
         op_inputs = []
         for input in self.inputs:
             if isinstance(input, lfs.Function):
-                op_inputs.append(input.evaluate(parametric_coordinates).flatten())
+                op_inputs.append(input.evaluate(parametric_coordinates))
             else:
                 op_inputs.append(input)
-
+                
         return self.operation(*op_inputs)
         
