@@ -6,7 +6,7 @@ name: Tests
 # Whenever there is a pull request (PR) or push to the "main" branch, the jobs specified below will run.
 on: 
   push:
-    branches: [ "main" ]
+    branches: [ "main", "overhaul" ]
   pull_request:
     branches: [ "main" ]
 
