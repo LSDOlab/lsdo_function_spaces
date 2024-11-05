@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.sparse as sps
-from ..function_space import LinearFunctionSpace
+from lsdo_function_spaces.core.function_space import LinearFunctionSpace
 from scipy.spatial.distance import cdist
 from dataclasses import dataclass
 from typing import Union

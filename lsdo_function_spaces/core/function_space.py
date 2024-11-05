@@ -292,6 +292,10 @@ class FunctionSpace:
         raise NotImplementedError(f"Compute distance bounds method must be implemented in {type(self)} class.")
     
     def _generate_projection_grid_search_resolution(self, grid_search_density_parameter):
+        grid_search_resolution = []
+        for dimension_length in self.coefficients_shape:
+            grid_search_resolution.append(int(dimension_length*grid_search_density_parameter))
+        return tuple(grid_search_resolution)
         pass    # NOTE: Don't want this to throw an error because thetr is a default is built in to the projection method.
 
 

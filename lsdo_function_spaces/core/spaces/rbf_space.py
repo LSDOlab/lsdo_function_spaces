@@ -85,7 +85,7 @@ class RBFFunctionSpace(LinearFunctionSpace):
         if len(parametric_coordinates.shape) == 1:
             parametric_coordinates = parametric_coordinates.reshape(1, -1)
 
-        dist = cdist(parametric_coordinates, self.points)
+        dist = cdist(parametric_coordinates, self.points, 'euclidean')
         phi = getattr(self, f'_{self.radial_function}')(dist)
 
         return phi
@@ -106,13 +106,8 @@ class RBFFunctionSpace(LinearFunctionSpace):
         return 1/np.sqrt(1 + (self.epsilon*x)**2)
 
     def _bump(self, x):
+        return np.piecewise(x, [x < 1/self.epsilon], [lambda x: np.exp(1/((self.epsilon*x)**2-1)), 0])
 
-        return np.where(x < 1/self.epsilon, np.exp(1/(1-(self.epsilon*x)**2)), 0)
-
-        if x < 1/self.epsilon:
-            return np.exp(1/(1-(self.epsilon*x)**2))
-        else:
-            return 0
 
 
 

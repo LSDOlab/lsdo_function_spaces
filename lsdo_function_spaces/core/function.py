@@ -310,7 +310,9 @@ class Function:
         if not hasattr(self, '_grid_searches'):
             self._grid_searches = {}
         if grid_search_density_parameter not in self._grid_searches:
+
             grid_search_resolution = self.space._generate_projection_grid_search_resolution(grid_search_density_parameter)
+
             if grid_search_resolution is None:
                 grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
             # grid_search_resolution = 100
