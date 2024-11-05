@@ -1,6 +1,7 @@
 import lsdo_function_spaces as lfs
 import csdl_alpha as csdl
 import numpy as np
+from lsdo_function_spaces import operations as ops
 
 recorder = csdl.Recorder(inline=True)
 recorder.start()
@@ -10,7 +11,15 @@ file_name = 'rectangular_wing.stp'
 wing = lfs.import_file(file_path + file_name, parallelize=False)
 
 # Plot the wing
-# wing.plot()
+wing.plot()
+
+fs = lfs.RBFFunctionSpace(num_parametric_dimensions=2, radial_function='polyharmonic_spline', grid_size=(20,20))
+
+wing_up = ops.concatenate((ops.minimum(wing), ops.maximum(wing), ops.average(wing)))
+wing_up.plot()
+
+exit()
+
 
 # left_wing = wing.create_subset(function_search_names=[', 0'])
 # left_wing.plot()

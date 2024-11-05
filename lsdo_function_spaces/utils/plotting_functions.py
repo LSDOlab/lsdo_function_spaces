@@ -165,6 +165,10 @@ def plot_surface(points:np.ndarray, plot_types:list=['function'], opacity:float=
     num_plot_u = points.shape[0]
     num_plot_v = points.shape[1]
 
+    import csdl_alpha as csdl
+    if isinstance(points, csdl.Variable):
+        points = points.value
+
     # NOTE: When doing triangles, this will have to be generalized. 
     # -- Maybe the input should be points and element_map instead of just points in a structured shape/grid?
     vertices = []

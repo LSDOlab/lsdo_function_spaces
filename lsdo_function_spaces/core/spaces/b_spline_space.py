@@ -1,7 +1,8 @@
 import numpy as np
 import scipy.sparse as sps
-from lsdo_function_spaces import FunctionSpace, Function
+from lsdo_function_spaces import Function
 import csdl_alpha as csdl
+from lsdo_function_spaces.core.function_space import LinearFunctionSpace
 
 from dataclasses import dataclass
 
@@ -10,7 +11,7 @@ from lsdo_b_splines_cython.cython.basis_matrix_surface_py import get_basis_surfa
 from lsdo_b_splines_cython.cython.basis_matrix_volume_py import get_basis_volume_matrix
 from lsdo_b_splines_cython.cython.get_open_uniform_py import get_open_uniform
 
-class BSplineSpace(FunctionSpace):
+class BSplineSpace(LinearFunctionSpace):
     '''
     Class for representing the space of BSplineFunctions of a particular degree.
 

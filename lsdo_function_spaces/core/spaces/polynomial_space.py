@@ -1,12 +1,12 @@
 import numpy as np
 import scipy.sparse as sps
-from lsdo_function_spaces import FunctionSpace, Function
+from ..function_space import LinearFunctionSpace
 from scipy.spatial.distance import cdist
 from dataclasses import dataclass
 from typing import Union
 from numpy.polynomial import polynomial as poly
 
-class PolynomialSpace(FunctionSpace):
+class PolynomialSpace(LinearFunctionSpace):
     """
     Inverse Distance Weighting (IDW) Function Space.
 

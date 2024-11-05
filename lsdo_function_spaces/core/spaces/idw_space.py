@@ -1,12 +1,12 @@
 import numpy as np
 import scipy.sparse as sps
-from lsdo_function_spaces import FunctionSpace, Function
+from lsdo_function_spaces.core.function_space import LinearFunctionSpace
 from scipy.spatial.distance import cdist
 from dataclasses import dataclass
 from typing import Union
 import csdl_alpha as csdl
 
-class IDWFunctionSpace(FunctionSpace):
+class IDWFunctionSpace(LinearFunctionSpace):
     """
     Inverse Distance Weighting (IDW) Function Space.
 
@@ -60,7 +60,7 @@ class IDWFunctionSpace(FunctionSpace):
             if n_neighbors < 1:
                 raise ValueError('n_neighbors must be greater than 0')
             
-        super().__init__(num_parametric_dimensions, (self.points.shape[0],))
+        super().__init__(num_parametric_dimensions, (self.points.shape[0], 1))
         
     def stitch(self, self_face, self_coeffs, other, other_face, other_coeffs):
         """
@@ -248,15 +248,15 @@ def test_idw_space():
     rec.start()
 
     space = IDWFunctionSpace(2, 2, grid_size=4)
-    parametric_coordinates = np.random.rand(10, 2)
-    data = 10*np.random.rand(10, 1)
+    parametric_coordinates = np.random.rand(100, 2)
+    data = 10*np.random.rand(100, 1)
     function = space.fit_function(data, parametric_coordinates)
     eval_data = function.evaluate(parametric_coordinates)
 
     space = IDWFunctionSpace(2, 2, grid_size=4, conserve=False)
     sparse_space = IDWFunctionSpace(2, 2, grid_size=4, conserve=False, n_neighbors=3)
-    parametric_coordinates = np.random.rand(10, 2)
-    data = 10*np.random.rand(10, 1)
+    parametric_coordinates = np.random.rand(100, 2)
+    data = 10*np.random.rand(100, 1)
     function = space.fit_function(data, parametric_coordinates)
     eval_data = function.evaluate(parametric_coordinates)
     sparse_function = sparse_space.fit_function(data, parametric_coordinates)
