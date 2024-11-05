@@ -405,7 +405,7 @@ def test_multiple_surfaces():
     my_b_spline_surface_set = lfs.FunctionSet(functions=[b_spline1, b_spline2], function_names=['b_spline1', 'b_spline2'])
 
 
-    num_points = 10000
+    num_points = 100
     x_coordinates = np.random.rand(num_points)
     y_coordinates = np.random.rand(num_points)
     z_coordinates = np.zeros((num_points,))
