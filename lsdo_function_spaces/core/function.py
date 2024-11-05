@@ -256,7 +256,8 @@ class Function:
         return new_function
 
     def project(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
-                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, force_reproject:bool=False, do_pickles=True) -> csdl.Variable:
+                max_newton_iterations:int=100, newton_tolerance:float=1e-12, plot:bool=False,
+                force_reproject:bool=False, projection_tolerance:float=None, do_pickles=True) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -292,6 +293,13 @@ class Function:
                                                             force_reproject)
             if isinstance(output, np.ndarray):
                 parametric_coordinates = output
+
+                if projection_tolerance is not None:
+                    parametric_coordinates = self.refine_projection(points, parametric_coordinates, direction,
+                                                                    grid_search_density_parameter, max_newton_iterations,
+                                                                    newton_tolerance, projection_tolerance=projection_tolerance, 
+                                                                    do_pickles=do_pickles)
+
                 if plot:
                     projection_results = self.evaluate(parametric_coordinates).value
                     plotting_elements = []
@@ -319,19 +327,43 @@ class Function:
 
             # Generate parametric grid
             parametric_grid_search = self.space.generate_parametric_grid(grid_search_resolution)
-            # Evaluate grid of points
-            grid_search_values = self.evaluate(parametric_coordinates=parametric_grid_search, coefficients=self.coefficients.value)
+
+            num_grid_points = np.prod(grid_search_resolution)
+            # cutoff_size = 3.e7
+            # cutoff_size = 2.5e7
+            # cutoff_size = 1.5e7
+            # cutoff_size = 1.e7
+            cutoff_size = 5.e6
+            if num_grid_points > cutoff_size:
+                num_sections = int(np.ceil(num_grid_points/cutoff_size))
+                section_size = int(np.ceil(num_grid_points/num_sections))
+                grid_search_values = np.zeros((num_grid_points, self.coefficients.shape[-1]))
+                start_index = 0
+                for i in range(num_sections):
+                    print(i, '/', num_sections)
+                    end_index = start_index + section_size
+                    grid_search_values[start_index:end_index] = self.evaluate(parametric_coordinates=parametric_grid_search[start_index:end_index],
+                                                                              coefficients=self.coefficients.value, non_csdl=True)
+                    start_index = end_index
+            else:
+                # Evaluate grid of points
+                grid_search_values = self.evaluate(parametric_coordinates=parametric_grid_search, coefficients=self.coefficients.value, non_csdl=True)
             expanded_points_size = points.shape[0]*grid_search_values.shape[0]
             self._grid_searches[grid_search_density_parameter] = (parametric_grid_search, grid_search_values, expanded_points_size)
         else:
             parametric_grid_search, grid_search_values, expanded_points_size = self._grid_searches[grid_search_density_parameter]
-        cutoff_size = 1.5e8
+        cutoff_size = 2.5e7
+        # cutoff_size = 5.e7
+        # cutoff_size = 1.e8
+        # cutoff_size = 1.5e8
+        # cutoff_size = 2.5e8
         if expanded_points_size > cutoff_size:
             # grid search sections of points at a time
             num_sections = int(np.ceil(expanded_points_size/cutoff_size))
             section_size = int(np.ceil(points.shape[0]/num_sections))
             closest_point_indices = np.zeros((points.shape[0],), dtype=int)
             for i in range(num_sections):
+                print(i, '/', num_sections)
                 start_index = i*section_size
                 end_index = min((i+1)*section_size, points.shape[0])
                 points_expanded = np.repeat(points[start_index:end_index,np.newaxis,:], grid_search_values.shape[0], axis=1)
@@ -446,7 +478,7 @@ class Function:
         points_left_to_converge = np.arange(points.shape[0])
         for j in range(max_newton_iterations):
             # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
-            function_values = self.evaluate(parametric_coordinates=current_guess[points_left_to_converge], coefficients=self.coefficients.value)
+            function_values = self.evaluate(parametric_coordinates=current_guess[points_left_to_converge], coefficients=self.coefficients.value, non_csdl=True)
             displacements = (points[points_left_to_converge] - function_values).reshape(points_left_to_converge.shape[0], num_physical_dimensions)
             
             d_displacement_d_parametric = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, self.space.num_parametric_dimensions))
@@ -544,6 +576,12 @@ class Function:
             # If any of the coordinates are outside the bounds, set them to the bounds
             current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
 
+        if projection_tolerance is not None:
+            current_guess = self.refine_projection(points, current_guess, direction,
+                                                            grid_search_density_parameter, max_newton_iterations,
+                                                            newton_tolerance, projection_tolerance=projection_tolerance, 
+                                                            do_pickles=do_pickles)
+
         if plot:
             projection_results = self.evaluate(current_guess).value
             plotting_elements = []
@@ -566,6 +604,61 @@ class Function:
                 pickle.dump(current_guess, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return current_guess
+    
+
+    def refine_projection(self, points:np.ndarray, parametric_coordinates:np.ndarray, direction:np.ndarray, initial_grid_search_density_parameter:int=1,
+                          max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=1e-6,
+                          do_pickles=True) -> np.ndarray:
+        '''
+        For projections where the points are in the geometry, this method finds the points that are not within the tolerance distance and reprojects
+        those points using a finer grid search density parameter.
+        '''
+        if isinstance(points, csdl.Variable):
+            points = points.value
+        points_flattened = points.reshape((-1,3))
+        previous_projection_results = self.evaluate(parametric_coordinates=parametric_coordinates, non_csdl=True)
+        distances = np.linalg.norm(points_flattened - previous_projection_results, axis=-1)
+        points_to_reproject = np.where(distances > projection_tolerance)[0]
+        if len(points_to_reproject) == 0:
+            return parametric_coordinates
+        else:
+            counter = 0
+            grid_search_density_parameter = initial_grid_search_density_parameter*1.2
+            while len(points_to_reproject) > 0:
+                print('Total tolerance norm: ', np.linalg.norm(distances))
+                print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
+                new_parametric_coordinates = self.project(points_flattened[points_to_reproject], direction, grid_search_density_parameter=grid_search_density_parameter,
+                                                          max_newton_iterations=max_newton_iterations, newton_tolerance=newton_tolerance, force_reproject=False)
+                parametric_coordinates[points_to_reproject] = new_parametric_coordinates
+                new_projection_results = self.evaluate(parametric_coordinates=new_parametric_coordinates, non_csdl=True)
+                distances = np.linalg.norm(points_flattened[points_to_reproject] - new_projection_results, axis=1)
+                points_to_reproject = points_to_reproject[np.where(distances > projection_tolerance)[0]]
+                grid_search_density_parameter *= 1.5
+                counter += 1
+                # if counter > 10:
+                #     break
+        
+        if do_pickles:
+            name_space_dict, long_name_space = self._check_whether_to_load_projection(points, direction, 
+                                                            grid_search_density_parameter, 
+                                                            max_newton_iterations, 
+                                                            newton_tolerance,
+                                                            force_reproject=True)
+            
+            # Save the projection
+            characters = string.ascii_letters + string.digits  # Alphanumeric characters
+            # Generate a random string of the specified length
+            random_string = ''.join(random.choice(characters) for _ in range(6))
+            projections_folder = 'stored_files/projections'
+            name_space_file_path = projections_folder + '/name_space_dict.pickle'
+            name_space_dict[long_name_space] = random_string
+            with open(name_space_file_path, 'wb+') as handle:
+                pickle.dump(name_space_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+            with open(projections_folder + f'/{random_string}.pickle', 'wb+') as handle:
+                pickle.dump(parametric_coordinates, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+        return parametric_coordinates
 
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
                                          max_newton_iterations:int=100, newton_tolerance:float=1e-6, force_reproject:bool=False) -> bool:
