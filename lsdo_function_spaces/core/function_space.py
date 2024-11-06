@@ -5,6 +5,8 @@ import scipy.sparse as sps
 import scipy.sparse.linalg as spsl
 import lsdo_function_spaces as lfs
 from typing import Union
+from .optimization import Optimization, NewtonOptimizer
+
 
 '''
 NOTE: To implement a function space (for instance, B-splines), all that must be implemented is the evaluation of the basis functions 
@@ -35,8 +37,8 @@ class FunctionSpace:
         if isinstance(self.coefficients_shape, int):
             self.coefficients_shape = (self.coefficients_shape,)
 
-        if len(self.coefficients_shape) == 1:
-            self.coefficients_shape = self.coefficients_shape*self.num_parametric_dimensions
+        # if len(self.coefficients_shape) == 1:
+        #     self.coefficients_shape = self.coefficients_shape*self.num_parametric_dimensions
 
 
     def generate_parametric_grid(self, grid_resolution:tuple) -> np.ndarray:
@@ -196,8 +198,151 @@ class FunctionSpace:
 
 
     
-    def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
-            basis_matrix:Union[sps.csc_matrix, np.ndarray]=None, regularization_parameter:float=None) -> csdl.Variable:
+    def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None,
+            regularization_parameter:float=None, constraint:callable=None) -> csdl.Variable:
+        '''
+        Fits the function to the given data. If derivatives are used, the parametric derivative orders must be provided. 
+
+        Parameters
+        ----------
+        values : csdl.Variable|np.ndarray -- shape=(num_points,num_physical_dimensions)
+            The values of the data.
+        parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
+            The parametric coordinates of the data.
+        parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
+            The derivative orders to fit.
+        regularization_parameter : float = None
+            The regularization parameter to use for fitting. If None, no regularization is used.
+        constraint : callable = None
+            The constraint to use for fitting. Takes in a function and returns the constraint residual.
+            Function signature: constraint(function) -> csdl.Variable | list[csdl.Variable]
+
+        Returns
+        -------
+        csdl.Variable
+            The coefficients of the fitted function.
+        '''
+        # General nonlinear fit via optimization
+
+        # initialize coefficients
+        coefficients = csdl.Variable(value=np.zeros(self.coefficients_shape + (values.shape[-1],)))
+
+        # compute constraints
+        if constraint is not None:
+            test_function = lfs.Function(space=self, coefficients=coefficients)
+            constraint_res = constraint(test_function) # TODO: name?
+        else: 
+            constraint_res = None
+
+        # compute residual
+        test_values = self._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
+        if test_values.shape != values.shape:
+            test_values = test_values.reshape(values.shape)
+        if regularization_parameter is None:
+            residual = csdl.sum((test_values - values)**2)
+        else:
+            residual = csdl.sum((test_values - values)**2) + regularization_parameter * csdl.sum(coefficients**2)
+
+        # create and run optimization
+        optimizer = NewtonOptimizer()
+        optimization = Optimization()
+        optimization.add_objective(residual)
+        optimization.add_design_variable(coefficients)
+        if constraint_res is not None:
+            optimization.add_constraint(constraint_res)
+        
+        optimizer.add_optimization(optimization)
+        optimizer.run()
+
+        return coefficients
+
+
+    def fit_function(self, values:np.ndarray, parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None,
+                     regularization_parameter:float=None, constraint:callable=None) -> lfs.Function:
+        '''
+        Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
+        parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
+        will be used.
+
+        Parameters
+        ----------
+        values : csdl.Variable|np.ndarray -- shape=(num_points,num_physical_dimensions)
+            The values of the data.
+        parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
+            The parametric coordinates of the data.
+        parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
+            The derivative orders to fit.
+        regularization_parameter : float = None
+            The regularization parameter to use for fitting. If None, no regularization is used.
+        constraint : callable = None
+            The constraint to use for fitting. Takes in a function and returns the constraint residual.
+            Function signature: constraint(function) -> csdl.Variable | list[csdl.Variable]
+
+        Returns
+        -------
+        lfs.Function
+        '''
+        coefficients = self.fit(values=values, parametric_coordinates=parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders,
+                                regularization_parameter=regularization_parameter, constraint=constraint)
+        function = lfs.Function(space=self, coefficients=coefficients)
+        return function
+
+    
+    def _compute_distance_bounds(self, point, function):
+        raise NotImplementedError(f"Compute distance bounds method must be implemented in {type(self)} class.")
+    
+    def _generate_projection_grid_search_resolution(self, grid_search_density_parameter):
+        grid_search_resolution = []
+        for dimension_length in self.coefficients_shape:
+            grid_search_resolution.append(int(dimension_length*grid_search_density_parameter))
+        return tuple(grid_search_resolution)
+        pass    # NOTE: Don't want this to throw an error because thetr is a default is built in to the projection method.
+
+
+    # NOTE: Do I want a plot function on the space? I would also have to pass in the coefficients to plot the function. What's the point?
+    # Additional NOTE: Type hinting leads to cyclic imports this way. I could just not type hint, but that's not ideal.
+    # def plot(self, point_types:list=['evaluated_points'], plot_types:list=['surface'],
+    #           opacity:float=1., color:Union[str,Function]='#00629B', surface_texture:str="", additional_plotting_elements:list=[], show:bool=True):
+    #     '''
+    #     Plots the B-spline Surface.
+
+    #     Parameters
+    #     -----------
+    #     points_type : list
+    #         The type of points to be plotted. {evaluated_points, coefficients}
+    #     plot_types : list
+    #         The type of plot {surface, wireframe, point_cloud}
+    #     opactity : float
+    #         The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
+    #     color : str
+    #         The 6 digit color code to plot the B-spline as.
+    #     surface_texture : str = "" {"metallic", "glossy", ...}, optional
+    #         The surface texture to determine how light bounces off the surface.
+    #         See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+    #     additional_plotting_elemets : list
+    #         Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+    #     show : bool
+    #         A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+    #     '''
+    #     if self.space.num_parametric_dimensions == 1:
+    #         return self.plot_curve(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color,
+    #                                 additional_plotting_elements=additional_plotting_elements, show=show)
+    #     elif self.space.num_parametric_dimensions == 2:
+    #         return self.plot_surface(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, 
+    #                                  surface_texture=surface_texture, additional_plotting_elements=additional_plotting_elements, show=show)
+    #     elif self.space.num_parametric_dimensions == 3:
+    #         return self.plot_volume(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color,
+    #                                 surface_texture=surface_texture, additional_plotting_elements=additional_plotting_elements, show=show)
+        raise NotImplementedError("I still need to implement this :(")
+        raise NotImplementedError(f"Plot method must be implemented in {type(self)} class?")
+
+    def _evaluate(self, coefficients, parametric_coordinates, parametric_derivative_orders):
+        raise NotImplementedError(f"_evaluate method must be implemented in {type(self)} class.")
+
+class LinearFunctionSpace(FunctionSpace):
+
+    def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:np.ndarray, parametric_derivative_orders:np.ndarray=None,
+            regularization_parameter:float=None, constraint:callable=None) -> csdl.Variable:
         '''
         Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
         parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
@@ -221,11 +366,9 @@ class FunctionSpace:
         csdl.Variable
             The coefficients of the fitted function.
         '''
-        if parametric_coordinates is None and basis_matrix is None:
-            raise ValueError("Either parametric coordinates or an evaluation matrix must be provided.")
-        if parametric_coordinates is not None and basis_matrix is not None:
-            print("Warning: Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
-            # raise Warning("Both parametric coordinates and an evaluation matrix were provided. Using the evaluation matrix.")
+        if constraint is not None:
+            return super().fit(values=values, parametric_coordinates=parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders,
+                               regularization_parameter=regularization_parameter, constraint=constraint)
 
         if len(values.shape) > 2:
             values = values.reshape((-1, values.shape[-1]))
@@ -283,78 +426,56 @@ class FunctionSpace:
         return coefficients
         # raise NotImplementedError(f"Fit method must be implemented in {type(self)} class.")
 
-    def fit_function(self, values:np.ndarray, parametric_coordinates:np.ndarray=None, parametric_derivative_orders:np.ndarray=None,
-            basis_matrix:Union[sps.csc_matrix, np.ndarray]=None, regularization_parameter:float=None) -> lfs.Function:
+    def _evaluate(self, coefficients, parametric_coordinates, parametric_derivative_orders):
         '''
-        Fits the function to the given data. Either parametric coordinates or an evaluation matrix must be provided. If derivatives are used, the
-        parametric derivative orders must be provided. If both parametric coordinates and an evaluation matrix are provided, the evaluation matrix
-        will be used.
+        Evaluates the function.
 
         Parameters
         ----------
         parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
-            The parametric coordinates of the data.
-        values : np.ndarray -- shape=(num_points,num_physical_dimensions)
-            The values of the data.
-        parametric_derivative_orders : np.ndarray = None -- shape=(num_points, num_parametric_dimensions)
-            The derivative orders to fit.
-        basis_matrix : sps.csc_matrix|np.ndarray = None -- shape=(num_points, num_coefficients)
-            The evaluation matrix to use for fitting.
-        regularization_parameter : float = None
-            The regularization parameter to use for fitting. If None, no regularization is used.
+            The coordinates at which to evaluate the function.
+        parametric_derivative_order : tuple = None -- shape=(num_points,num_parametric_dimensions)
+            The order of the parametric derivatives to evaluate.
+        coefficients : csdl.Variable = None -- shape=coefficients_shape
+            The coefficients of the function.
 
         Returns
         -------
-        lfs.Function
+        function_values : csdl.Variable
+            The function evaluated at the given coordinates.
         '''
-        coefficients = self.fit(values=values, parametric_coordinates=parametric_coordinates, parametric_derivative_orders=parametric_derivative_orders,
-                                basis_matrix=basis_matrix, regularization_parameter=regularization_parameter)
-        function = lfs.Function(space=self, coefficients=coefficients)
-        return function
-        # raise NotImplementedError(f"Fit function method must be implemented in {type(self)} class.")
 
+        basis_matrix = self.compute_basis_matrix(parametric_coordinates, parametric_derivative_orders)
+        # # values = basis_matrix @ coefficients
+        if isinstance(coefficients, csdl.Variable) and sps.issparse(basis_matrix):
+            if coefficients.shape != (basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]):
+                coefficients = coefficients.reshape((basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1]))
+            # NOTE: TEMPORARY IMPLEMENTATION SINCE CSDL ONLY SUPPORTS SPARSE MATVECS AND NOT MATMATS
+            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients.shape[1])))
+            for i in csdl.frange(coefficients.shape[1]):
+                coefficients_column = coefficients[:,i].reshape((coefficients.shape[0],1))
+                values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
+        else:
+            values = basis_matrix @ coefficients.reshape((basis_matrix.shape[1], -1))
+
+        if len(parametric_coordinates.shape) == 1:
+            pass    # Come back to this case
+
+        if values.shape[:-1] != parametric_coordinates.shape[:-1]:
+            values = values.reshape(parametric_coordinates.shape[:-1] + (-1,))
+
+        if values.shape[0] == 1:
+            values = values[0]  # Get rid of the extra dimension if only one point is evaluated
+        if values.shape[-1] == 1 and len(values.shape) > 1:
+            values = values.reshape(values.shape[:-1])   # Get rid of the extra dimension if only one physical dimension is evaluated
+        elif values.shape[-1] == 1:
+            values = values[0]
+
+        return values
     
-    def _compute_distance_bounds(self, point, function):
-        raise NotImplementedError(f"Compute distance bounds method must be implemented in {type(self)} class.")
-    
-    def _generate_projection_grid_search_resolution(self, grid_search_density_parameter):
-        pass    # NOTE: Don't want this to throw an error because thetr is a default is built in to the projection method.
 
-
-    # NOTE: Do I want a plot function on the space? I would also have to pass in the coefficients to plot the function. What's the point?
-    # Additional NOTE: Type hinting leads to cyclic imports this way. I could just not type hint, but that's not ideal.
-    # def plot(self, point_types:list=['evaluated_points'], plot_types:list=['surface'],
-    #           opacity:float=1., color:Union[str,Function]='#00629B', surface_texture:str="", additional_plotting_elements:list=[], show:bool=True):
-    #     '''
-    #     Plots the B-spline Surface.
-
-    #     Parameters
-    #     -----------
-    #     points_type : list
-    #         The type of points to be plotted. {evaluated_points, coefficients}
-    #     plot_types : list
-    #         The type of plot {surface, wireframe, point_cloud}
-    #     opactity : float
-    #         The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
-    #     color : str
-    #         The 6 digit color code to plot the B-spline as.
-    #     surface_texture : str = "" {"metallic", "glossy", ...}, optional
-    #         The surface texture to determine how light bounces off the surface.
-    #         See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
-    #     additional_plotting_elemets : list
-    #         Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
-    #     show : bool
-    #         A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
-    #     '''
-    #     if self.space.num_parametric_dimensions == 1:
-    #         return self.plot_curve(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color,
-    #                                 additional_plotting_elements=additional_plotting_elements, show=show)
-    #     elif self.space.num_parametric_dimensions == 2:
-    #         return self.plot_surface(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color, 
-    #                                  surface_texture=surface_texture, additional_plotting_elements=additional_plotting_elements, show=show)
-    #     elif self.space.num_parametric_dimensions == 3:
-    #         return self.plot_volume(point_types=point_types, plot_types=plot_types, opacity=opacity, color=color,
-    #                                 surface_texture=surface_texture, additional_plotting_elements=additional_plotting_elements, show=show)
-        raise NotImplementedError("I still need to implement this :(")
-        raise NotImplementedError(f"Plot method must be implemented in {type(self)} class?")
-
+def print_why_injured_knee_is_warmer():
+    print("Because it's inflamed.")
+    print("I'm sorry. That was a bad joke.")
+    print("I'll see myself out.")
+    print("Goodbye")
