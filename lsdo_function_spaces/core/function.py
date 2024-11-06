@@ -257,7 +257,9 @@ class Function:
 
     def project(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-12, plot:bool=False,
-                force_reproject:bool=False, projection_tolerance:float=None, do_pickles=True) -> csdl.Variable:
+                force_reproject:bool=False, projection_tolerance:float=None, 
+                grid_search_evaluation_cutoff:int=1.e7, grid_search_subtraction_cutoff:int=5.e7,
+                do_pickles=True) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -333,9 +335,9 @@ class Function:
             # cutoff_size = 2.5e7
             # cutoff_size = 1.5e7
             # cutoff_size = 1.e7
-            cutoff_size = 5.e6
-            if num_grid_points > cutoff_size:
-                num_sections = int(np.ceil(num_grid_points/cutoff_size))
+            # cutoff_size = 5.e6
+            if num_grid_points > grid_search_evaluation_cutoff:
+                num_sections = int(np.ceil(num_grid_points/grid_search_evaluation_cutoff))
                 section_size = int(np.ceil(num_grid_points/num_sections))
                 grid_search_values = np.zeros((num_grid_points, self.coefficients.shape[-1]))
                 start_index = 0
@@ -352,14 +354,14 @@ class Function:
             self._grid_searches[grid_search_density_parameter] = (parametric_grid_search, grid_search_values, expanded_points_size)
         else:
             parametric_grid_search, grid_search_values, expanded_points_size = self._grid_searches[grid_search_density_parameter]
-        cutoff_size = 2.5e7
+        # cutoff_size = 2.5e7
         # cutoff_size = 5.e7
         # cutoff_size = 1.e8
         # cutoff_size = 1.5e8
         # cutoff_size = 2.5e8
-        if expanded_points_size > cutoff_size:
+        if expanded_points_size > grid_search_subtraction_cutoff:
             # grid search sections of points at a time
-            num_sections = int(np.ceil(expanded_points_size/cutoff_size))
+            num_sections = int(np.ceil(expanded_points_size/grid_search_subtraction_cutoff))
             section_size = int(np.ceil(points.shape[0]/num_sections))
             closest_point_indices = np.zeros((points.shape[0],), dtype=int)
             for i in range(num_sections):
