@@ -3,10 +3,22 @@ import scipy.sparse as sps
 import lsdo_function_spaces as lfs
 import csdl_alpha as csdl
 from typing import Union
-from dataclasses import dataclass
 
-@dataclass
-class FunctionSetSpace(lfs.FunctionSpace):
+class ParametricMapping:
+    def __init__(self, mappling_function:callable, indices:list):
+        self.map = mappling_function
+        self.indices = indices
+
+# TODO: switch to this implementation
+# class ParametricMapping:
+#     def __init__(self, forward_map:callable, inverse_map:callable, indices_in:list, indices_out:list):
+#         self.map = forward_map
+#         self.inverse = inverse_map
+#         self.indices_in = indices_in
+#         self.indices_out = indices_out
+
+
+class FunctionSetSpace:
     '''
     Class for representing the space of a particular set of functions.
 
@@ -14,9 +26,9 @@ class FunctionSetSpace(lfs.FunctionSpace):
     ----------
     num_parametric_dimensions : dict[int]
         The number of parametric dimensions/variables for each B-spline that is a part of this B-spline set.
-    spaces : list[lfs.FuncctionSpace] -- list length = number of functions in the set
+    spaces : dict[lfs.FuncctionSpace] -- list length = number of functions in the set
         The function spaces that make up this FunctionSet.
-    connections : list[list[int]] = None
+    connections : dict[list[int]] = None
         The connections between the B-splines in the set. If None, the B-splines are assumed to be independent.
 
     Methods
@@ -24,17 +36,59 @@ class FunctionSetSpace(lfs.FunctionSpace):
     compute_basis_matrix(parametric_coordinates: np.ndarray, parametric_derivative_orders: np.ndarray = None) -> sps.csc_matrix:
         Computes the basis matrix for the given parametric coordinates and derivative orders.
     '''
-    num_parametric_dimensions : dict[int]
-    spaces : dict[lfs.FunctionSpace]
-    connections : dict[list[int]] = None
+    
+    def __init__(self, num_parametric_dimensions:dict[int], spaces:dict[lfs.FunctionSpace], connections:dict[list[int]]=None):
+        self.num_parametric_dimensions = num_parametric_dimensions
+        self.spaces = spaces
+        self.connections = connections
+        self.parametric_maps = {}
 
-    # @property
-    # def index_to_coefficient_indices(self) -> dict[int, list[int]]:
-    #     return self._index_to_coefficient_indices
-
-    def __post_init__(self):
         if isinstance(self.spaces, list):
             self.spaces = {i:space for i, space in enumerate(self.spaces)}
+
+    def add_parametric_map(self, parametric_map:ParametricMapping, function_space:lfs.FunctionSpace):
+        '''
+        EXPERIMENTAL Applies a parametric map to the function space.
+
+        Parameters
+        ----------
+        parametric_map : ParametricMapping
+            The parametric map to apply.
+        function_space : FunctionSpace
+            The function space to apply the parametric map to.
+        '''
+        key = -len(self.parametric_maps)-1
+        self.parametric_maps[key] = parametric_map
+        inds = parametric_map.indices
+        for ind in inds:
+            if ind in self.spaces:
+                del self.spaces[ind]
+
+        self.spaces[key] = function_space
+
+    def _apply_parametric_maps(self, parametric_coordinates:np.ndarray) -> np.ndarray:
+        '''
+        EXPERIMENTAL Applies the parametric map to the given parametric coordinates.
+
+        Parameters
+        ----------
+        parametric_coordinates : np.ndarray
+            The parametric coordinates to apply the map to.
+
+        Returns
+        -------
+        mapped_parametric_coordinates : np.ndarray
+            The mapped parametric coordinates.
+        '''
+        for i, parametric_coord in enumerate(parametric_coordinates):
+            index_old, coord = parametric_coord
+            for index, parametric_map in self.parametric_maps.items():
+                if index_old in parametric_map.indices:
+                    coords = parametric_map.map([(index_old, coord)])
+                    parametric_coordinates[i] = (index, coords)
+                    break
+
+        return parametric_coordinates
 
     def initialize_function(self, num_physical_dimensions:int, value:float=0, implicit:bool=False) -> tuple[csdl.Variable, lfs.FunctionSet]:
         '''
@@ -79,7 +133,6 @@ class FunctionSetSpace(lfs.FunctionSpace):
 
         return coeff_var, function_set
 
-
     def generate_parametric_grid(self, grid_resolution:tuple) -> list[tuple[int, np.ndarray]]:
         '''
         Generates a parametric grid for the function set space.
@@ -102,7 +155,6 @@ class FunctionSetSpace(lfs.FunctionSpace):
                 parametric_grid.append((i, space_parametric_grid[j,:]))
 
         return parametric_grid
-
 
     def compute_basis_matrix(self, parametric_coordinates: list[tuple[int, np.ndarray]], parametric_derivative_orders: np.ndarray = None,
                                    expansion_factor:int=None) -> sps.csc_matrix:
@@ -142,7 +194,6 @@ class FunctionSetSpace(lfs.FunctionSpace):
         basis_matrix = sps.vstack(basis_matrix_rows, format='csc')
         return basis_matrix
     
-
     def fit(self, values:Union[csdl.Variable, np.ndarray], parametric_coordinates:list[tuple[int,np.ndarray]]=None,
             parametric_derivative_orders:list[tuple]=None, basis_matrix:Union[sps.csc_matrix, np.ndarray]=None,
             regularization_parameter:float=None) -> list[csdl.Variable]:
@@ -183,6 +234,9 @@ class FunctionSetSpace(lfs.FunctionSpace):
             # Perform fitting using the parametric coordinates
             pass
 
+        if self.parametric_maps:
+            parametric_coordinates = self._apply_parametric_maps(parametric_coordinates)
+
         # Current implementation: Perform fitting on each individual function in the set
         num_physical_dimensions = values.shape[-1]
 
@@ -194,7 +248,6 @@ class FunctionSetSpace(lfs.FunctionSpace):
             values_per_function[i] = []
             parametric_coordinates_per_function[i] = []
             parametric_derivative_orders_per_function[i] = None
-
 
         for i, parametric_coordinate in enumerate(parametric_coordinates):
             index, parametric_coordinate = parametric_coordinate
@@ -218,12 +271,7 @@ class FunctionSetSpace(lfs.FunctionSpace):
                 coefficients[i] = space.fit(values=function_values, parametric_coordinates=parametric_coordinates_per_function[i],
                                             parametric_derivative_orders=None, regularization_parameter=regularization_parameter)
             else:
-                # print(f"No data was provided for function {i}.")
-                # Kind of hacky way to get size of coefficients
-                parametric_coordinate = space.generate_parametric_grid(grid_resolution=(1,1))[0]
-                basis_vector = space.compute_basis_matrix(parametric_coordinates=parametric_coordinate)
-                num_coefficients = basis_vector.shape[1]
-                function_coefficients = csdl.Variable(value=np.zeros((num_coefficients,num_physical_dimensions)))
+                function_coefficients = csdl.Variable(value=np.zeros(space.coefficients_shape + (num_physical_dimensions, )))
                 coefficients[i] = function_coefficients
 
         return coefficients
@@ -257,6 +305,9 @@ class FunctionSetSpace(lfs.FunctionSpace):
         # Current implementation: Perform fitting on each individual function in the set
         num_physical_dimensions = values.shape[-1]
 
+        if self.parametric_maps:
+            parametric_coordinates = self._apply_parametric_maps(parametric_coordinates)
+
         # Organize values into a list of values for each function in the set
         values_per_function = {}
         parametric_coordinates_per_function = {}
@@ -298,7 +349,6 @@ class FunctionSetSpace(lfs.FunctionSpace):
                 coefficients[i] = function_coefficients
 
         return coefficients
-
 
     def fit_function_set(self, values:Union[csdl.Variable,np.ndarray], parametric_coordinates:list[tuple[int,np.ndarray]]=None,
             parametric_derivative_orders:list[tuple]=None, basis_matrix:Union[sps.csc_matrix, np.ndarray]=None,
@@ -338,7 +388,6 @@ class FunctionSetSpace(lfs.FunctionSpace):
         function_set = lfs.FunctionSet(functions=functions, space=self)
 
         return function_set
-
 
 
 # if __name__ == "__main__":

@@ -320,6 +320,9 @@ class FunctionSet:
         # if isinstance(parametric_derivative_orders, tuple):
         #     parametric_derivative_orders = [parametric_derivative_orders]
 
+        if self.space.parametric_maps:
+            parametric_coordinates = self.space._apply_parametric_maps(parametric_coordinates)
+
         # Process parametric coordinates to group them by which function they belong to
         function_indices = []
         function_parametric_coordinates = []
@@ -762,19 +765,24 @@ class FunctionSet:
 
         vertices = []
         faces = []
+        c_grid = []
         c_points = None
         for ind, function in self.functions.items():
-            if isinstance(color, lfs.FunctionSet):
-                function_color = color.functions[ind]
-                fn_vertices, fn_faces, fn_c_points = get_surface_mesh(surface=function, color=function_color, grid_n=grid_n, offset=len(vertices))
-                if c_points is None:
-                    c_points = fn_c_points
-                else:
-                    c_points = np.hstack((c_points, fn_c_points))
-            else:
-                fn_vertices, fn_faces = get_surface_mesh(surface=function, grid_n=grid_n, offset=len(vertices))
+            # if isinstance(color, lfs.FunctionSet):
+            #     function_color = color.functions[ind]
+            #     fn_vertices, fn_faces, fn_c_points = get_surface_mesh(surface=function, color=function_color, grid_n=grid_n, offset=len(vertices))
+            #     if c_points is None:
+            #         c_points = fn_c_points
+            #     else:
+            #         c_points = np.hstack((c_points, fn_c_points))
+            # else:
+            fn_vertices, fn_faces, grid = get_surface_mesh(surface=function, grid_n=grid_n, offset=len(vertices))
+            c_grid.append([(ind, grid_i.reshape(1,-1)) for grid_i in grid])
             vertices.extend(fn_vertices)
             faces.extend(fn_faces)
+
+        if isinstance(color, lfs.FunctionSet):
+            c_points = np.hstack([color.evaluate(grid_i, non_csdl=True) for grid_i in c_grid])
 
         mesh = vedo.Mesh([vertices, faces]).opacity(opacity).lighting(surface_texture)
 

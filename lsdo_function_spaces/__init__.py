@@ -8,7 +8,7 @@ from .core.function_set import FunctionSet
 from .core.function_space import FunctionSpace, LinearFunctionSpace
 
 # spaces
-from .core.function_set_space import FunctionSetSpace
+from .core.function_set_space import FunctionSetSpace, ParametricMapping
 from .core.spaces.b_spline_space import BSplineSpace
 from .core.spaces.polynomial_space import PolynomialSpace
 from .core.spaces.conditional_space import ConditionalSpace

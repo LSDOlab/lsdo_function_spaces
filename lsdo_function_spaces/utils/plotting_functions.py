@@ -243,7 +243,7 @@ def get_surface_mesh(surface, color=None, grid_n=25, offset=0):
             if c_points.shape[1] > 1:
                 c_points = np.linalg.norm(c_points, axis=1)
         return vertices, faces, c_points
-    return vertices, faces
+    return vertices, faces, grid
 
 # NOTE: Vedo doesn't seem to have volume plotting? So just have the volumes call the plot_surface function for the outer surfaces.
 # def plot_volume(self, points:np.ndarray, plot_types:list=['surfaces'],
