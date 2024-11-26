@@ -288,7 +288,7 @@ class FunctionSpace:
         return function
 
     
-    def _compute_distance_bounds(self, point, function):
+    def _compute_distance_bounds(self, point, function, direction=None):
         raise NotImplementedError(f"Compute distance bounds method must be implemented in {type(self)} class.")
     
     def _generate_projection_grid_search_resolution(self, grid_search_density_parameter):
