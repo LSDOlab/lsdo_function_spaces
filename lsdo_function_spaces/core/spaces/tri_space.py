@@ -33,15 +33,12 @@ class LinearTriangulationSpace(LinearFunctionSpace):
                     elements.append([(i+1)*grid_size[0]+j+1, (i+1)*grid_size[0]+j, i*grid_size[0]+j+1])
                     elements.append([i*grid_size[0]+j, i*grid_size[0]+j+1, (i+1)*grid_size[0]+j])
 
-
             elements = np.array(elements)
 
         num_parametric_dimensions = 2
-
         self.nodes = nodes
         self.elements = elements
         
-
         super().__init__(num_parametric_dimensions, (self.nodes.shape[0],))
 
     def compute_basis_matrix(self, parametric_coordinates:np.ndarray, parametric_derivative_orders: np.ndarray=None, expansion_factor:int=None) -> np.ndarray:
@@ -78,21 +75,18 @@ class LinearTriangulationSpace(LinearFunctionSpace):
         basis_matrix = np.zeros((parametric_coordinates.shape[0], self.nodes.shape[0]))
         pdo = tuple(parametric_derivative_orders) if parametric_derivative_orders is not None else None
         
-        # TODO: eliminate the loop - a bit confusing
-        # TODO: also this is kinda hard-coded for linear elements, consider changing
+        if pdo is None or pdo == (0, 0):
+            submatrices = self.compute_shape_functions(elemental_coordinates)
+        else:
+            submatrices = self.compute_shape_function_gradients(elemental_indices, elemental_coordinates, pdo)
+
         for i, element_index in enumerate(elemental_indices):
-            if pdo is None or pdo == (0, 0):
-                shape_functions = self.compute_shape_functions(elemental_coordinates[i].reshape(1, -1))
+            if submatrices is not None:
                 element_coord_indices = self.elements[element_index]
-                basis_matrix[i, element_coord_indices] = shape_functions
-            elif pdo == (1, 0) or pdo == (0, 1):
-                shape_function_jacobian = self.compute_shape_function_jacobian(elemental_indices[i].reshape(1, -1), elemental_coordinates[i].reshape(1, -1))
-                element_coord_indices = self.elements[element_index]
-                basis_matrix[i, element_coord_indices] = shape_function_jacobian[0, 0, :] if pdo == (1, 0) else shape_function_jacobian[0, 1, :]
+                basis_matrix[i, element_coord_indices] = submatrices[i]
             else:
                 break
                 
-
         return basis_matrix
     
     def compute_elemental_coordinates(self, parametric_coordinates):
@@ -174,32 +168,39 @@ class LinearTriangulationSpace(LinearFunctionSpace):
 
         return np.vstack((N1, N2, N3)).T
 
-    def compute_shape_function_jacobian(self, elemental_indices, local_coordinates):
+    def compute_shape_function_gradients(self, elemental_indices, local_coordinates, pdo):
         """
         Compute the shape function gradients for the given local coordinates.
 
         Parameters
         ----------
+        elemental_indices : np.ndarray
+            The element indices for which to compute the shape function gradients.
         local_coordinates : np.ndarray
             The local coordinates for which to compute the shape function gradients.
+        pdo : tuple
+            parametric_derivative_orders
 
         Returns
         -------
         np.ndarray
             The computed shape function gradients.
         """
-        J = np.zeros((local_coordinates.shape[0], 2, 3))
-        for i, element_index in enumerate(elemental_indices):
-            # shortcut for linear triangles
-            element_nodes = self.nodes[self.elements[element_index]]
-            x1, x2, x3 = element_nodes[0,0,0], element_nodes[0,1,0], element_nodes[0,2,0]
-            y1, y2, y3 = element_nodes[0,0,1], element_nodes[0,1,1], element_nodes[0,2,1]
-            
-            area2 = x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2)
+        gradient = np.zeros((elemental_indices.shape[0], 3))
+        if pdo == (1, 0) or pdo == (0, 1):
+            for i, element_index in enumerate(elemental_indices):
+                element_nodes = self.nodes[self.elements[element_index]]
+                x1, x2, x3 = element_nodes[0,0], element_nodes[1,0], element_nodes[2,0]
+                y1, y2, y3 = element_nodes[0,1], element_nodes[1,1], element_nodes[2,1]
+                
+                area2 = x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2)
 
-            J[i,:,:] = np.array([[y2-y3, y3-y1, y1-y2], [x3-x2, x1-x3, x2-x1]])/area2
+                if pdo == (1, 0):
+                    gradient[i] = np.array([y2-y3, y3-y1, y1-y2])/area2
+                else:
+                    gradient[i] = np.array([x3-x2, x1-x3, x2-x1])/area2
 
-        return J
+        return gradient
 
 
 def test_tri():
@@ -220,5 +221,5 @@ def test_tri():
     data = np.hstack((parametric_coordinates*10, height))
 
     function = lfs.Function(space, data)
-    function.evaluate(rand_parametric_coordinates, plot=True)
+    function.evaluate(rand_parametric_coordinates)
 
