@@ -1,5 +1,6 @@
 from lsdo_function_spaces.core.spaces.b_spline_space import *
 from lsdo_function_spaces.core.spaces.idw_space import *
+from lsdo_function_spaces.core.spaces.tri_space import *
 
 from scipy.stats.qmc import LatinHypercube
 
@@ -52,6 +53,12 @@ def test_fit_eval():
         'tol': 1e-4
     })
 
+    # Linear Triangulation
+    cases.append({
+        'space': lfs.LinearTriangulationSpace(grid_size=(10,10)),
+        'tol': 1e-3
+    })
+
 
     for case in cases:
         rec = csdl.Recorder(inline=True)
@@ -72,8 +79,10 @@ def test_fit_eval():
         eval_data = function.evaluate(parametric_coordinates)
 
         if not np.linalg.norm(eval_data.value - data)/num_points < tol:
+            print(f'error is {np.linalg.norm(eval_data.value - data)/num_points}')
             raise ValueError('Failed basic test for space: {}'.format(space.__class__.__name__))
         
 
 if __name__ == "__main__":
+    # test_tri()
     test_fit_eval()
