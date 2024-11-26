@@ -612,14 +612,12 @@ class FunctionSet:
             function_space = function.space
 
             coefficients = function.coefficients.value
-            degree = function_space.degree
             coeff_shape = function_space.coefficients_shape
-            knot_vectors_norm = round(np.linalg.norm(function_space.knots), 2)
 
             # if f'{target}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}' in name_space:
             #     pass
             # else:
-            name_space += f'_{str(coefficients)}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
+            name_space += f'_{str(coefficients)}_{str(coeff_shape)}'
         
         long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}_{extrema}_{priority_inds}_{priority_eps}'
 

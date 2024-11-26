@@ -202,6 +202,37 @@ class LinearTriangulationSpace(LinearFunctionSpace):
 
         return gradient
 
+    def _compute_distance_bounds(self, point:np.ndarray, function, direction=None) -> float:
+        '''
+        Computes the distance bounds for the given point.
+        '''
+        if not hasattr(function, 'bounding_box'):
+            coefficients = function.coefficients.value.reshape((-1, function.num_physical_dimensions))
+            function.bounding_box = np.zeros((2, coefficients.shape[-1]))
+            if self.num_parametric_dimensions == 1:
+                function.bounding_box[0, 0] = np.min(coefficients)
+                function.bounding_box[1, 0] = np.max(coefficients)
+            else:
+                function.bounding_box[0, :] = np.min(coefficients, axis=0)
+                function.bounding_box[1, :] = np.max(coefficients, axis=0)
+
+        if direction is None:
+            neg = function.bounding_box[0] - point
+            pos = point - function.bounding_box[1]
+            distance_vector = np.maximum(np.maximum(neg, pos), 0)
+            return np.linalg.norm(distance_vector)
+        else:
+            closest_point = np.zeros((len(point),))
+            for i in range(len(point)):
+                if point[i] < function.bounding_box[0, i]:
+                    closest_point[i] = function.bounding_box[0, i]
+                elif point[i] > function.bounding_box[1, i]:
+                    closest_point[i] = function.bounding_box[1, i]
+                else:
+                    closest_point[i] = point[i]
+            t = np.dot(direction, (closest_point - point)) / np.dot(direction, direction)
+            closest_point_on_line = point + t * direction
+            return np.linalg.norm(closest_point_on_line - closest_point)
 
 def test_tri():
     from scipy.stats.qmc import LatinHypercube
