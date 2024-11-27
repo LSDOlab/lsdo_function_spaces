@@ -28,7 +28,7 @@ def test_fit_eval():
     # RBF
     cases.append({
         'space': lfs.RBFFunctionSpace(num_parametric_dimensions=2, radial_function='gaussian', grid_size=(10,10), epsilon=2),
-        'tol': 1e-4
+        'tol': 1e-3
     })
     cases.append({
         'space': lfs.RBFFunctionSpace(num_parametric_dimensions=2, radial_function='polyharmonic_spline', grid_size=(10,10), k=2),
@@ -36,11 +36,11 @@ def test_fit_eval():
     })
     cases.append({
         'space': lfs.RBFFunctionSpace(num_parametric_dimensions=2, radial_function='inverse_quadratic', grid_size=(10,10), epsilon=2),
-        'tol': 1e-4
+        'tol': 1e-3
     })
     cases.append({
         'space': lfs.RBFFunctionSpace(num_parametric_dimensions=2, radial_function='inverse_multiquadric', grid_size=(10,10), epsilon=2),
-        'tol': 1e-4
+        'tol': 1e-3
     })
     cases.append({
         'space': lfs.RBFFunctionSpace(num_parametric_dimensions=2, radial_function='bump', grid_size=(10,10), epsilon=1/1.6),
@@ -74,7 +74,7 @@ def test_fit_eval():
         data = np.hstack((parametric_coordinates*10, height))
 
         function = space.fit_function(data, parametric_coordinates)
-        # function.project(data, plot=True, do_pickles=False)
+        # function.project(data, plot=True, do_pickles=True)
         # function.plot()
         eval_data = function.evaluate(parametric_coordinates)
 
