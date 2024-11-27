@@ -678,8 +678,7 @@ class Function:
         #     # else:
         #     name_space += f'_{str(coefficients)}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
 
-        knot_vectors_norm = round(np.linalg.norm(self.space.knots), 2)
-        function_info = f'{self.name}_{self.coefficients.value}_{self.space.degree}_{knot_vectors_norm}'
+        function_info = f'{self.name}_{self.coefficients.value}'
         projection_info = f'{points}_{direction}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}'
         long_name_space = f'{function_info}_{projection_info}'
 
