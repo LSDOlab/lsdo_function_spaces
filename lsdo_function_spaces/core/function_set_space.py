@@ -68,7 +68,7 @@ class FunctionSetSpace:
 
     def _apply_parametric_maps(self, parametric_coordinates:np.ndarray) -> np.ndarray:
         '''
-        EXPERIMENTAL Applies the parametric map to the given parametric coordinates.
+        EXPERIMENTAL Applies the parametric map to the given parametric coordinates. IN PLACE!!!
 
         Parameters
         ----------

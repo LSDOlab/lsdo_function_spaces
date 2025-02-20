@@ -321,7 +321,7 @@ class FunctionSet:
         #     parametric_derivative_orders = [parametric_derivative_orders]
 
         if self.space.parametric_maps:
-            parametric_coordinates = self.space._apply_parametric_maps(parametric_coordinates)
+            parametric_coordinates = self.space._apply_parametric_maps(parametric_coordinates.copy())
 
         # Process parametric coordinates to group them by which function they belong to
         function_indices = []
@@ -376,6 +376,7 @@ class FunctionSet:
             coeff_vectors.append(coefficients)
 
         if len(reorder_indices) != len(parametric_coordinates):
+            print(len(reorder_indices), len(parametric_coordinates))
             raise ValueError("Some points were not evaluated.")
 
 
