@@ -787,7 +787,7 @@ class FunctionSet:
             plotter.show(mesh)
         return mesh
 
-    def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
+    def plot(self, camera:dict=None, screenshot:str="",title:str=None, interactive:bool=True, point_types:list=['evaluated_points'], plot_types:list=['function'],
               opacity:float=1., color:str|lfs.FunctionSet='#00629B', color_map:str='jet', surface_texture:str="",
               line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
@@ -851,9 +851,12 @@ class FunctionSet:
             scalarbar = plotting_elements[-1].add_scalarbar()
         if show:
             if self.name is not None:
-                lfs.show_plot(plotting_elements=plotting_elements, title=self.name)
+                if title is not None:
+                    lfs.show_plot(plotting_elements=plotting_elements, title=title,camera=camera,screenshot=screenshot,interactive=interactive)
+                else:
+                    lfs.show_plot(plotting_elements=plotting_elements, title=self.name,camera=camera,screenshot=screenshot,interactive=interactive)
             else:
-                lfs.show_plot(plotting_elements=plotting_elements, title='Function Set Plot')
+                lfs.show_plot(plotting_elements=plotting_elements, title='Function Set Plot',camera=camera,screenshot=screenshot, interactive=interactive)
         return plotting_elements
     
     def create_parallel_space(self, function_space:lfs.FunctionSpace) -> lfs.FunctionSetSpace:
