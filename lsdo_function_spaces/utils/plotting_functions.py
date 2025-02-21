@@ -4,7 +4,7 @@
 import numpy as np
 from typing import Union
 
-def show_plot(plotting_elements:list, title:str, axes:bool=True, view_up:str="z", interactive:bool=True):
+def show_plot(plotting_elements:list, title:str, camera:dict, axes:bool=True, view_up:str="z", interactive:bool=True, screenshot:str=""):
     '''
     Shows the plot.
 
@@ -23,7 +23,7 @@ def show_plot(plotting_elements:list, title:str, axes:bool=True, view_up:str="z"
     '''
     import vedo
     plotter = vedo.Plotter()
-    plotter.show(plotting_elements, title, axes=axes, viewup=view_up, interactive=interactive)
+    plotter.show(plotting_elements, title, axes=axes, viewup=view_up, interactive=interactive, camera=camera,screenshot=screenshot)
 
 
 def plot_points(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray]='#00629B', color_map:str='jet', size=6.,
