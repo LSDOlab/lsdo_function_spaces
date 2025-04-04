@@ -37,6 +37,8 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
 
     direction = options['direction']/np.linalg.norm(options['direction']) if options['direction'] is not None else None
     extrema = options['extrema']
+    projection_tolerance = options['projection_tolerance']
+
 
     for point in chunk:
         if extrema:
@@ -106,7 +108,8 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
                         projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
                         break
                 parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
-                                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'], do_pickles=False)
+                                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'], 
+                                                        projection_tolerance=projection_tolerance, do_pickles=False)
                 projections_performed += 1
                 if direction is None:
                     error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
@@ -485,8 +488,8 @@ class FunctionSet:
         return new_function_set
 
     def project(self, points:np.ndarray, num_workers:int=None, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
-                max_newton_iterations:int=100, newton_tolerance:float=1e-6, plot:bool=False, extrema=False, force_reprojection=False,
-                priority_inds=None, priority_eps=1e-3) -> csdl.Variable:
+                max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=None, plot:bool=False,
+                extrema=False, force_reprojection=False, priority_inds=None, priority_eps=1e-3) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -508,6 +511,10 @@ class FunctionSet:
             The maximum number of Newton iterations.
         newton_tolerance : float = 1e-6
             The tolerance for the Newton iterations.
+        projection_tolerance : float = None
+            The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
+            using a finer grid search density parameter for the points that are not within the tolerance distance. 
+            NOTE: This is only for use when the points are within the geometry that they are being projected onto.
         plot : bool = False
             Whether or not to plot the projection.
         extrema : bool = False
@@ -525,6 +532,7 @@ class FunctionSet:
                                                         grid_search_density_parameter, 
                                                         max_newton_iterations, 
                                                         newton_tolerance,
+                                                        projection_tolerance,
                                                         extrema,
                                                         priority_inds, priority_eps,
                                                         force_reprojection)
@@ -546,7 +554,8 @@ class FunctionSet:
 
         options = {'direction': direction, 'grid_search_density_parameter': grid_search_density_parameter,
                    'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance,
-                   'extrema': extrema, 'priority_inds': priority_inds, 'priority_eps': priority_eps}
+                   'projection_tolerance': projection_tolerance, 'extrema': extrema,
+                   'priority_inds': priority_inds, 'priority_eps': priority_eps}
         
 
 
@@ -602,13 +611,13 @@ class FunctionSet:
         return parametric_coordinates
 
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
-                                          max_newton_iterations:int=100, newton_tolerance:float=1e-6, extrema:bool=False, 
-                                          priority_inds=None, priority_eps=1e-3,
+                                          max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=None, 
+                                          extrema:bool=False, priority_inds=None, priority_eps=1e-3,
                                           force_reprojection:bool=False) -> bool:
         name_space = f'{self.name}'
 
         name_space = ''
-        for function in self.functions.values():
+        for function_index, function in self.functions.items():
             function_space = function.space
 
             coefficients = function.coefficients.value
@@ -617,9 +626,11 @@ class FunctionSet:
             # if f'{target}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}' in name_space:
             #     pass
             # else:
-            name_space += f'_{str(coefficients)}_{str(coeff_shape)}'
+            # name_space += f'_{str(coefficients)}_{str(coeff_shape)}'
+            # name_space += f'_{function_index}_{str(coefficients)}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
+            name_space += f'_{function_index}_{str(coefficients)}_{str(coeff_shape)}'
         
-        long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}_{extrema}_{priority_inds}_{priority_eps}'
+        long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}_{projection_tolerance}_{extrema}_{priority_inds}_{priority_eps}'
 
         projections_folder = 'stored_files/projections'
         name_space_file_path = projections_folder + '/name_space_dict.pickle'

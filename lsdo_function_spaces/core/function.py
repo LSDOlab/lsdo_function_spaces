@@ -256,8 +256,10 @@ class Function:
         return new_function
 
     def project(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
-                max_newton_iterations:int=100, newton_tolerance:float=1e-12, plot:bool=False,
-                force_reproject:bool=False, projection_tolerance:float=None, do_pickles=True) -> csdl.Variable:
+                max_newton_iterations:int=100, newton_tolerance:float=1e-12, projection_tolerance:float=None,
+                plot:bool=False, force_reproject:bool=False, 
+                grid_search_evaluation_cutoff:int=1.e7, grid_search_subtraction_cutoff:int=5.e7,
+                do_pickles=True) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -279,6 +281,10 @@ class Function:
             The maximum number of Newton iterations.
         newton_tolerance : float = 1e-6
             The tolerance for the Newton iterations.
+        projection_tolerance : float = None
+            The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
+            using a finer grid search density parameter for the points that are not within the tolerance distance. 
+            NOTE: This is only for use when the points are within the geometry that they are being projected onto.
         plot : bool = False
             Whether or not to plot the projection.
         '''
@@ -333,9 +339,9 @@ class Function:
             # cutoff_size = 2.5e7
             # cutoff_size = 1.5e7
             # cutoff_size = 1.e7
-            cutoff_size = 5.e6
-            if num_grid_points > cutoff_size:
-                num_sections = int(np.ceil(num_grid_points/cutoff_size))
+            # cutoff_size = 5.e6
+            if num_grid_points > grid_search_evaluation_cutoff:
+                num_sections = int(np.ceil(num_grid_points/grid_search_evaluation_cutoff))
                 section_size = int(np.ceil(num_grid_points/num_sections))
                 grid_search_values = np.zeros((num_grid_points, self.coefficients.shape[-1]))
                 start_index = 0
@@ -352,14 +358,14 @@ class Function:
             self._grid_searches[grid_search_density_parameter] = (parametric_grid_search, grid_search_values, expanded_points_size)
         else:
             parametric_grid_search, grid_search_values, expanded_points_size = self._grid_searches[grid_search_density_parameter]
-        cutoff_size = 2.5e7
+        # cutoff_size = 2.5e7
         # cutoff_size = 5.e7
         # cutoff_size = 1.e8
         # cutoff_size = 1.5e8
         # cutoff_size = 2.5e8
-        if expanded_points_size > cutoff_size:
+        if expanded_points_size > grid_search_subtraction_cutoff:
             # grid search sections of points at a time
-            num_sections = int(np.ceil(expanded_points_size/cutoff_size))
+            num_sections = int(np.ceil(expanded_points_size/grid_search_subtraction_cutoff))
             section_size = int(np.ceil(points.shape[0]/num_sections))
             closest_point_indices = np.zeros((points.shape[0],), dtype=int)
             for i in range(num_sections):
@@ -635,8 +641,13 @@ class Function:
                 points_to_reproject = points_to_reproject[np.where(distances > projection_tolerance)[0]]
                 grid_search_density_parameter *= 1.5
                 counter += 1
-                # if counter > 10:
-                #     break
+                if counter > 10:
+                    print('--'*50)
+                    print("WARNING: Projection refinement stopped because it took more than 10 refinement steps!")
+                    print("This is likely because not all of the points are within the function being projected onto.")
+                    print("Error remaining: ", np.linalg.norm(distances))
+                    print('--'*50)
+                    break
         
         if do_pickles:
             name_space_dict, long_name_space = self._check_whether_to_load_projection(points, direction, 
@@ -853,7 +864,7 @@ class Function:
             if function_values.shape[-1] < 3:   # Plot against u coordinate
                 u_axis_scaling = np.max(function_values) - np.min(function_values)
                 if u_axis_scaling != 0:
-                    parametric_coordinates = parametric_coordinates * u_axis_scaling
+                    parametric_coordinates = parametric_coordinates# * u_axis_scaling
                 points = np.hstack((parametric_coordinates, function_values))
             else:
                 points = function_values
@@ -870,9 +881,12 @@ class Function:
             # scale u axis to be more visually clear based on scaling of parameter
             u_axis_scaling = np.max(self.coefficients.value) - np.min(self.coefficients.value)
             if u_axis_scaling != 0:
-                parametric_coordinates = parametric_coordinates * u_axis_scaling
+                parametric_coordinates = parametric_coordinates# * u_axis_scaling
 
-            points = np.hstack((parametric_coordinates, self.coefficients.value))
+            if len(self.coefficients.shape) == 1:
+                points = np.hstack((parametric_coordinates, self.coefficients.value.reshape((-1,1))))
+            else:
+                points = np.hstack((parametric_coordinates, self.coefficients.value))
 
             if isinstance(color, Function):
                 if color.space.num_parametric_dimensions != 1:
