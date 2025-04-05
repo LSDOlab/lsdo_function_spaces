@@ -38,6 +38,8 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
     direction = options['direction']/np.linalg.norm(options['direction']) if options['direction'] is not None else None
     extrema = options['extrema']
     projection_tolerance = options['projection_tolerance']
+    grid_search_evaluation_cutoff = options['grid_search_evaluation_cutoff']
+    grid_search_subtraction_cutoff = options['grid_search_subtraction_cutoff']
 
 
     for point in chunk:
@@ -85,7 +87,9 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
             best_surface = sorted_surfaces[0]
             function = functions[best_surface]
             best_coord = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
-                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'], do_pickles=False)
+                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'], 
+                                        projection_tolerance=projection_tolerance, grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
+                                        grid_search_subtraction_cutoff=grid_search_subtraction_cutoff, do_pickles=False)
             projections_performed += 1
 
             if direction is None:
@@ -109,7 +113,8 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
                         break
                 parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
                                                         max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'], 
-                                                        projection_tolerance=projection_tolerance, do_pickles=False)
+                                                        projection_tolerance=projection_tolerance, grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
+                                                        grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,  do_pickles=False)
                 projections_performed += 1
                 if direction is None:
                     error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
@@ -489,7 +494,8 @@ class FunctionSet:
 
     def project(self, points:np.ndarray, num_workers:int=None, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=None, plot:bool=False,
-                extrema=False, force_reprojection=False, priority_inds=None, priority_eps=1e-3) -> csdl.Variable:
+                extrema=False, force_reprojection=False, priority_inds=None, priority_eps=1e-3,
+                grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -555,7 +561,9 @@ class FunctionSet:
         options = {'direction': direction, 'grid_search_density_parameter': grid_search_density_parameter,
                    'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance,
                    'projection_tolerance': projection_tolerance, 'extrema': extrema,
-                   'priority_inds': priority_inds, 'priority_eps': priority_eps}
+                   'priority_inds': priority_inds, 'priority_eps': priority_eps,
+                   'grid_search_evaluation_cutoff': None,
+                   'grid_search_subtraction_cutoff': None}
         
 
 
@@ -567,6 +575,7 @@ class FunctionSet:
         # make sure there aren't more workers than points
         num_workers = min(num_workers, points.shape[0])
 
+        # ----- Do initial projection on all points -----
         # Divide the points into chunks and run in parallel
         if num_workers > 1:
             chunks = np.array_split(points, num_workers)
@@ -587,6 +596,26 @@ class FunctionSet:
                 parametric_coordinates.extend(result)
         else:
             parametric_coordinates = find_best_surface_chunked(points, self.functions, options)
+
+
+        # ----- If projection tolerance is not None, refine the projection for the necessary points -----
+        if projection_tolerance is not None:
+            options['grid_search_evaluation_cutoff'] = grid_search_evaluation_cutoff
+            options['grid_search_subtraction_cutoff'] = grid_search_subtraction_cutoff
+            # Find the points that are not within the projection tolerance
+            if direction is None:
+                distances = np.linalg.norm(points - self.evaluate(parametric_coordinates).value, axis=1)
+            else:
+                function_values = self.evaluate(parametric_coordinates, non_csdl=True)
+                displacement = (points - function_values).reshape((-1,))
+                distances = np.linalg.norm(np.cross(displacement, direction), axis=1)
+
+            # Get the indices of the points that are not within the projection tolerance
+            indices = np.where(distances > projection_tolerance)[0]
+
+            # Refine the projection for the points that are not within the projection tolerance
+            if len(indices) > 0:
+                parametric_coordinates[indices] = find_best_surface_chunked(points[indices], self.functions, options)
 
         characters = string.ascii_letters + string.digits  # Alphanumeric characters
         # Generate a random string of the specified length
