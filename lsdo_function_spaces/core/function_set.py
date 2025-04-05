@@ -560,10 +560,10 @@ class FunctionSet:
 
         options = {'direction': direction, 'grid_search_density_parameter': grid_search_density_parameter,
                    'max_newton_iterations': max_newton_iterations, 'newton_tolerance': newton_tolerance,
-                   'projection_tolerance': projection_tolerance, 'extrema': extrema,
+                   'projection_tolerance': None, 'extrema': extrema,
                    'priority_inds': priority_inds, 'priority_eps': priority_eps,
-                   'grid_search_evaluation_cutoff': None,
-                   'grid_search_subtraction_cutoff': None}
+                   'grid_search_evaluation_cutoff': grid_search_evaluation_cutoff,
+                   'grid_search_subtraction_cutoff': grid_search_subtraction_cutoff}
         
 
 
@@ -600,8 +600,7 @@ class FunctionSet:
 
         # ----- If projection tolerance is not None, refine the projection for the necessary points -----
         if projection_tolerance is not None:
-            options['grid_search_evaluation_cutoff'] = grid_search_evaluation_cutoff
-            options['grid_search_subtraction_cutoff'] = grid_search_subtraction_cutoff
+            options['projection_tolerance'] = projection_tolerance
             # Find the points that are not within the projection tolerance
             if direction is None:
                 distances = np.linalg.norm(points - self.evaluate(parametric_coordinates).value, axis=1)
@@ -615,7 +614,9 @@ class FunctionSet:
 
             # Refine the projection for the points that are not within the projection tolerance
             if len(indices) > 0:
-                parametric_coordinates[indices] = find_best_surface_chunked(points[indices], self.functions, options)
+                refined_parametric_coordinates = find_best_surface_chunked(points[indices], self.functions, options)
+                for i, index in enumerate(indices):
+                    parametric_coordinates[index] = refined_parametric_coordinates[i]
 
         characters = string.ascii_letters + string.digits  # Alphanumeric characters
         # Generate a random string of the specified length
