@@ -357,7 +357,7 @@ class Function:
                 grid_search_values = np.zeros((num_grid_points, self.coefficients.shape[-1]))
                 start_index = 0
                 for i in range(num_sections):
-                    print(i, '/', num_sections)
+                    # print(i, '/', num_sections)
                     end_index = start_index + section_size
                     grid_search_values[start_index:end_index] = self.evaluate(parametric_coordinates=parametric_grid_search[start_index:end_index],
                                                                               coefficients=self.coefficients.value, non_csdl=True)
@@ -380,7 +380,7 @@ class Function:
             section_size = int(np.ceil(points.shape[0]/num_sections))
             closest_point_indices = np.zeros((points.shape[0],), dtype=int)
             for i in range(num_sections):
-                print(i, '/', num_sections)
+                # print(i, '/', num_sections)
                 start_index = i*section_size
                 end_index = min((i+1)*section_size, points.shape[0])
                 points_expanded = np.repeat(points[start_index:end_index,np.newaxis,:], grid_search_values.shape[0], axis=1)
@@ -643,8 +643,8 @@ class Function:
             counter = 0
             grid_search_density_parameter = initial_grid_search_density_parameter*1.2
             while len(points_to_reproject) > 0:
-                print('Total tolerance norm: ', np.linalg.norm(distances))
-                print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
+                # print('Total tolerance norm: ', np.linalg.norm(distances))
+                # print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
                 new_parametric_coordinates = self.project(points_flattened[points_to_reproject], direction, grid_search_density_parameter=grid_search_density_parameter,
                                                           max_newton_iterations=max_newton_iterations, newton_tolerance=newton_tolerance, force_reproject=False,
                                                           grid_search_evaluation_cutoff=grid_search_evaluation_cutoff, 
@@ -656,11 +656,11 @@ class Function:
                 grid_search_density_parameter *= 1.5
                 counter += 1
                 if counter > 10:
-                    print('--'*50)
-                    print("WARNING: Projection refinement stopped because it took more than 10 refinement steps!")
-                    print("This is likely because not all of the points are within the function being projected onto.")
-                    print("Error remaining: ", np.linalg.norm(distances))
-                    print('--'*50)
+                    # print('--'*50)
+                    # print("WARNING: Projection refinement stopped because it took more than 10 refinement steps!")
+                    # print("This is likely because not all of the points are within the function being projected onto.")
+                    # print("Error remaining: ", np.linalg.norm(distances))
+                    # print('--'*50)
                     break
         
         if do_pickles:
