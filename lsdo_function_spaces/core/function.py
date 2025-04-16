@@ -622,6 +622,17 @@ class Function:
 
         return current_guess
     
+    @staticmethod
+    def _get_projection_squared_distances(points_1, points_2, direction):
+        difference = points_2 - points_1
+        if direction is None:
+            squared_distances = np.sum((difference)**2, axis=-1)
+        else:
+            direction = direction/np.linalg.norm(direction)
+            distances_along_axis = np.dot(difference, direction)
+            squared_distances = np.sum((difference)**2, axis=-1) - distances_along_axis**2
+        return squared_distances
+
 
     def refine_projection(self, points:np.ndarray, parametric_coordinates:np.ndarray, direction:np.ndarray, initial_grid_search_density_parameter:int=1,
                           max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=1e-6,
@@ -635,32 +646,43 @@ class Function:
             points = points.value
         points_flattened = points.reshape((-1,3))
         previous_projection_results = self.evaluate(parametric_coordinates=parametric_coordinates, non_csdl=True)
-        distances = np.linalg.norm(points_flattened - previous_projection_results, axis=-1)
-        points_to_reproject = np.where(distances > projection_tolerance)[0]
+        
+
+        squared_distances = self._get_projection_squared_distances(points_flattened, previous_projection_results, direction)
+        points_to_reproject = np.where(squared_distances > projection_tolerance**2)[0]
+        distances = np.sqrt(squared_distances[points_to_reproject])
+
         if len(points_to_reproject) == 0:
             return parametric_coordinates
         else:
             counter = 0
             grid_search_density_parameter = initial_grid_search_density_parameter*1.2
             while len(points_to_reproject) > 0:
-                # print('Total tolerance norm: ', np.linalg.norm(distances))
-                # print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
+                print('Total tolerance norm: ', np.linalg.norm(distances))
+                print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
                 new_parametric_coordinates = self.project(points_flattened[points_to_reproject], direction, grid_search_density_parameter=grid_search_density_parameter,
                                                           max_newton_iterations=max_newton_iterations, newton_tolerance=newton_tolerance, force_reproject=False,
                                                           grid_search_evaluation_cutoff=grid_search_evaluation_cutoff, 
                                                           grid_search_subtraction_cutoff=grid_search_subtraction_cutoff)
                 parametric_coordinates[points_to_reproject] = new_parametric_coordinates
                 new_projection_results = self.evaluate(parametric_coordinates=new_parametric_coordinates, non_csdl=True)
-                distances = np.linalg.norm(points_flattened[points_to_reproject] - new_projection_results, axis=1)
-                points_to_reproject = points_to_reproject[np.where(distances > projection_tolerance)[0]]
+                
+                # distances = np.linalg.norm(points_flattened[points_to_reproject] - new_projection_results, axis=1)
+                # points_to_reproject = points_to_reproject[np.where(distances > projection_tolerance)[0]]
+                
+                squared_distances = self._get_projection_squared_distances(points_flattened[points_to_reproject], new_projection_results, direction)
+                new_points_to_reproject = np.where(squared_distances > projection_tolerance**2)[0]
+                distances = np.sqrt(squared_distances[new_points_to_reproject])
+                points_to_reproject = points_to_reproject[new_points_to_reproject]
+
                 grid_search_density_parameter *= 1.5
                 counter += 1
-                if counter > 10:
-                    # print('--'*50)
-                    # print("WARNING: Projection refinement stopped because it took more than 10 refinement steps!")
-                    # print("This is likely because not all of the points are within the function being projected onto.")
-                    # print("Error remaining: ", np.linalg.norm(distances))
-                    # print('--'*50)
+                if counter > 5:
+                    print('--'*50)
+                    print("WARNING: Projection refinement stopped because it took more than 10 refinement steps!")
+                    print("This is likely because not all of the points are within the function being projected onto.")
+                    print("Error remaining: ", np.linalg.norm(distances))
+                    print('--'*50)
                     break
         
         if do_pickles:
