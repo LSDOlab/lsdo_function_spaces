@@ -12,6 +12,7 @@ import random
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
+from lsdo_function_spaces.utils.internal_utilities import get_projection_squared_distances
 
 
 
@@ -259,7 +260,7 @@ class Function:
                 max_newton_iterations:int=100, newton_tolerance:float=1e-12, projection_tolerance:float=None,
                 plot:bool=False, force_reproject:bool=False, 
                 grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                do_pickles=True) -> csdl.Variable:
+                do_pickles=True, grid_search_density_cutoff=50) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -284,7 +285,8 @@ class Function:
         projection_tolerance : float = None
             The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
             using a finer grid search density parameter for the points that are not within the tolerance distance. 
-            NOTE: This is only for use when the points are within the geometry that they are being projected onto.
+            NOTE: This is only for use when the points are within the geometry that they are being projected onto, or, if a direction is provided,
+            the axis defined by the direction intersects the geometry.
         plot : bool = False
             Whether or not to plot the projection.
         force_reproject : bool = False
@@ -297,6 +299,9 @@ class Function:
             will be subtracted in sections. If None, no bunching will be done.
         do_pickles : bool = True
             If True, the projection will be saved to a file. The file will be saved in the stored_files/projections directory.
+        grid_search_density_cutoff : int = 50
+            The cutoff for the grid search density during refinement. If the grid search density is greater than this, the refinement will be
+            terminated and a warning will be printed.
         '''
         if isinstance(points, csdl.Variable):
             points = points.value
@@ -315,7 +320,7 @@ class Function:
                                                                     grid_search_density_parameter, max_newton_iterations,
                                                                     newton_tolerance, projection_tolerance, 
                                                                     grid_search_evaluation_cutoff, grid_search_subtraction_cutoff,
-                                                                    do_pickles=do_pickles)
+                                                                    do_pickles=False, grid_search_density_cutoff=grid_search_density_cutoff)
 
                 if plot:
                     projection_results = self.evaluate(parametric_coordinates).value
@@ -597,7 +602,7 @@ class Function:
             current_guess = self.refine_projection(points, current_guess, direction,
                                                             grid_search_density_parameter, max_newton_iterations,
                                                             newton_tolerance, projection_tolerance=projection_tolerance, 
-                                                            do_pickles=do_pickles)
+                                                            do_pickles=False)
 
         if plot:
             projection_results = self.evaluate(current_guess).value
@@ -621,23 +626,11 @@ class Function:
                 pickle.dump(current_guess, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return current_guess
-    
-    @staticmethod
-    def _get_projection_squared_distances(points_1, points_2, direction):
-        difference = points_2 - points_1
-        if direction is None:
-            squared_distances = np.sum((difference)**2, axis=-1)
-        else:
-            direction = direction/np.linalg.norm(direction)
-            distances_along_axis = np.dot(difference, direction)
-            squared_distances = np.sum((difference)**2, axis=-1) - distances_along_axis**2
-        return squared_distances
-
 
     def refine_projection(self, points:np.ndarray, parametric_coordinates:np.ndarray, direction:np.ndarray, initial_grid_search_density_parameter:int=1,
                           max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=1e-6,
                           grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                          do_pickles=True) -> np.ndarray:
+                          do_pickles=True, grid_search_density_cutoff=50) -> np.ndarray:
         '''
         For projections where the points are in the geometry, this method finds the points that are not within the tolerance distance and reprojects
         those points using a finer grid search density parameter.
@@ -648,7 +641,7 @@ class Function:
         previous_projection_results = self.evaluate(parametric_coordinates=parametric_coordinates, non_csdl=True)
         
 
-        squared_distances = self._get_projection_squared_distances(points_flattened, previous_projection_results, direction)
+        squared_distances = get_projection_squared_distances(points_flattened, previous_projection_results, direction)
         points_to_reproject = np.where(squared_distances > projection_tolerance**2)[0]
         distances = np.sqrt(squared_distances[points_to_reproject])
 
@@ -658,8 +651,8 @@ class Function:
             counter = 0
             grid_search_density_parameter = initial_grid_search_density_parameter*1.2
             while len(points_to_reproject) > 0:
-                print('Total tolerance norm: ', np.linalg.norm(distances))
-                print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
+                # print('Total tolerance norm: ', np.linalg.norm(distances))
+                # print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
                 new_parametric_coordinates = self.project(points_flattened[points_to_reproject], direction, grid_search_density_parameter=grid_search_density_parameter,
                                                           max_newton_iterations=max_newton_iterations, newton_tolerance=newton_tolerance, force_reproject=False,
                                                           grid_search_evaluation_cutoff=grid_search_evaluation_cutoff, 
@@ -670,14 +663,14 @@ class Function:
                 # distances = np.linalg.norm(points_flattened[points_to_reproject] - new_projection_results, axis=1)
                 # points_to_reproject = points_to_reproject[np.where(distances > projection_tolerance)[0]]
                 
-                squared_distances = self._get_projection_squared_distances(points_flattened[points_to_reproject], new_projection_results, direction)
+                squared_distances = get_projection_squared_distances(points_flattened[points_to_reproject], new_projection_results, direction)
                 new_points_to_reproject = np.where(squared_distances > projection_tolerance**2)[0]
                 distances = np.sqrt(squared_distances[new_points_to_reproject])
                 points_to_reproject = points_to_reproject[new_points_to_reproject]
 
                 grid_search_density_parameter *= 1.5
                 counter += 1
-                if counter > 5:
+                if grid_search_density_parameter > grid_search_density_cutoff:
                     print('--'*50)
                     print("WARNING: Projection refinement stopped because it took more than 10 refinement steps!")
                     print("This is likely because not all of the points are within the function being projected onto.")
@@ -708,7 +701,8 @@ class Function:
         return parametric_coordinates
 
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
-                                         max_newton_iterations:int=100, newton_tolerance:float=1e-6, force_reproject:bool=False) -> bool:
+                                         max_newton_iterations:int=100, newton_tolerance:float=1e-6, force_reproject:bool=False,
+                                         grid_search_density_cutoff=50) -> bool:
         # name_space = f'{self.name}'
 
         # name_space = ''
@@ -726,7 +720,7 @@ class Function:
         #     name_space += f'_{str(coefficients)}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
 
         function_info = f'{self.name}_{self.coefficients.value}'
-        projection_info = f'{points}_{direction}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}'
+        projection_info = f'{points}_{direction}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}_{grid_search_density_cutoff}'
         long_name_space = f'{function_info}_{projection_info}'
 
         projections_folder = 'stored_files/projections'
