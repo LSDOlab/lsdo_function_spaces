@@ -320,7 +320,7 @@ class Function:
                                                                     grid_search_density_parameter, max_newton_iterations,
                                                                     newton_tolerance, projection_tolerance, 
                                                                     grid_search_evaluation_cutoff, grid_search_subtraction_cutoff,
-                                                                    do_pickles=False, grid_search_density_cutoff=grid_search_density_cutoff)
+                                                                    do_pickles=do_pickles, grid_search_density_cutoff=grid_search_density_cutoff)
 
                 if plot:
                     projection_results = self.evaluate(parametric_coordinates).value
@@ -701,8 +701,7 @@ class Function:
         return parametric_coordinates
 
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
-                                         max_newton_iterations:int=100, newton_tolerance:float=1e-6, force_reproject:bool=False,
-                                         grid_search_density_cutoff=50) -> bool:
+                                         max_newton_iterations:int=100, newton_tolerance:float=1e-6, force_reproject:bool=False) -> bool:
         # name_space = f'{self.name}'
 
         # name_space = ''
@@ -720,7 +719,7 @@ class Function:
         #     name_space += f'_{str(coefficients)}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
 
         function_info = f'{self.name}_{self.coefficients.value}'
-        projection_info = f'{points}_{direction}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}_{grid_search_density_cutoff}'
+        projection_info = f'{points}_{direction}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}'
         long_name_space = f'{function_info}_{projection_info}'
 
         projections_folder = 'stored_files/projections'

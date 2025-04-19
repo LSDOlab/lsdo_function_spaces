@@ -709,7 +709,9 @@ class FunctionSet:
             # name_space += f'_{function_index}_{str(coefficients)}_{str(degree)}_{str(coeff_shape)}_{str(knot_vectors_norm)}'
             name_space += f'_{function_index}_{str(coefficients)}_{str(coeff_shape)}'
         
-        long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}_{projection_tolerance}_{extrema}_{priority_inds}_{priority_eps}_{grid_search_density_cutoff}'
+        long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}_{projection_tolerance}_{extrema}_{priority_inds}_{priority_eps}'
+        if projection_tolerance is not None:
+            long_name_space += f'_{grid_search_density_cutoff}'
 
         projections_folder = 'stored_files/projections'
         name_space_file_path = projections_folder + '/name_space_dict.pickle'
