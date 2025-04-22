@@ -650,7 +650,7 @@ class FunctionSet:
                 if len(indices) == 0:
                     break
 
-                # print(f'refining to {grid_search_density_parameter} for {len(indices)} points')
+                print(f'refining to {grid_search_density_parameter} for {len(indices)} points')
 
                 refined_parametric_coordinates = find_best_surface_chunked(points[indices], self.functions, options)
                 for i, index in enumerate(indices):
@@ -663,7 +663,6 @@ class FunctionSet:
                     print("This is likely because not all of the points are within the function being projected onto.")
                     print(f"{len(indices)} points were not within the projection tolerance of {projection_tolerance}.")
                     print('--'*50)
-                    
                     break
 
         characters = string.ascii_letters + string.digits  # Alphanumeric characters

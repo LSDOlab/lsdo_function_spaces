@@ -176,7 +176,7 @@ class Function:
 
         # compute areas of the quadrilaterals
         grid_values = area.evaluate(parametric_coordinates=parametric_grid.reshape(-1,2)).reshape((grid_n, grid_n, -1))
-        output = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1)))
+        output = csdl.Variable(value=np.zeros(values.shape))
         for i in csdl.frange(grid_n-1):
             for j in csdl.frange(grid_n-1):
                 area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]) + 1e-8)/2
