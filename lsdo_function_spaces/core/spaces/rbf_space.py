@@ -88,6 +88,9 @@ class RBFFunctionSpace(LinearFunctionSpace):
         dist = cdist(parametric_coordinates, self.points, 'euclidean')
         phi = getattr(self, f'_{self.radial_function}')(dist)
 
+        # sum the basis functions so the total influence per evaluation point is 1
+        phi = phi / np.sum(phi, axis=1, keepdims=True)
+
         return phi
 
     def _gaussian(self, x):
