@@ -307,6 +307,9 @@ class FunctionSet:
         '''
         u_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(1,0))
         v_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(0,1))
+        if len(u_vectors.shape) == 1:
+            u_vectors = u_vectors.reshape((1, -1))
+            v_vectors = v_vectors.reshape((1, -1))
         normals = csdl.cross(u_vectors, v_vectors, axis=1)
         normals = normals / (csdl.expand(csdl.norm(normals + 1e-8, axes=(1,)), (normals.shape), action='i->ij') + 1e-12)
 
