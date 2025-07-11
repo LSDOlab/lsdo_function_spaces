@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import csdl_alpha as csdl
 import numpy as np
+import numpy.typing as npt
 import scipy.sparse as sps
 import scipy.sparse.linalg as spsl
 import lsdo_function_spaces as lfs
@@ -336,7 +337,7 @@ class FunctionSpace:
         raise NotImplementedError("I still need to implement this :(")
         raise NotImplementedError(f"Plot method must be implemented in {type(self)} class?")
 
-    def _evaluate(self, coefficients, parametric_coordinates, parametric_derivative_orders):
+    def _evaluate(self, coefficients, parametric_coordinates, parametric_derivative_orders) -> Union[csdl.Variable, npt.NDArray[np.float64]]:
         raise NotImplementedError(f"_evaluate method must be implemented in {type(self)} class.")
 
 class LinearFunctionSpace(FunctionSpace):

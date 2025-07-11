@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import csdl_alpha as csdl
 import numpy as np
+import numpy.typing as npt
 import scipy.sparse as sps
 import concurrent.futures
 import itertools
@@ -9,6 +10,8 @@ import pickle
 from pathlib import Path
 import string
 import random
+import vedo
+from typing import Optional, Union, Sequence
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
@@ -162,7 +165,7 @@ class FunctionSet:
         The function set space that the function set is from. If None (recommended), the function set space will be inferred from the functions.
     '''
     functions: dict[int,lfs.Function]
-    function_names : dict[str] = None
+    function_names : dict[int,str] = None
     name : str = None
     space : lfs.FunctionSetSpace = None
 
@@ -300,7 +303,8 @@ class FunctionSet:
             lfs.show_plot(plotting_elements, 'normals')
         return normals
 
-    def evaluate(self, parametric_coordinates:list[tuple[int, np.ndarray]], parametric_derivative_orders:list[tuple]=None,
+    def evaluate(self, parametric_coordinates:list[tuple[int, npt.NDArray[np.float64]]], 
+                 parametric_derivative_orders:Optional[Union[Sequence[int], Sequence[Sequence[int,...]]]]=None,
                  plot:bool=False, non_csdl:bool=False) -> csdl.Variable:
         '''
         Evaluates the function.
@@ -311,7 +315,7 @@ class FunctionSet:
             The coordinates at which to evaluate the function. The list elements correspond to the coordinate of each point.
             The tuple elements correspond to the index of the function and the parametric coordinates for that point.
             The parametric coordinates should be a numpy array of shape (num_parametric_dimensions,).
-        parametric_derivative_orders : list[tuple] = None -- shape=(num_points,num_parametric_dimensions)
+        parametric_derivative_orders : Optional[Union[Sequence[int], Sequence[Sequence[int,...]]]] = None -- shape=(num_points,num_parametric_dimensions)
             The order of the parametric derivatives to evaluate. If None, the function itself is evaluated.
         plot : bool = False
             Whether or not to plot the function with the points from the result of the evaluation.
@@ -474,6 +478,7 @@ class FunctionSet:
         if isinstance(new_function_spaces, lfs.FunctionSpace):
             new_function_spaces = {ind:new_function_spaces for ind in self.functions}
 
+
         if len(new_function_spaces) != len(indices_of_functions_to_refit):
             raise ValueError("The number of new function spaces must match the number of functions to refit. " +
                              f"({len(new_function_spaces)} != {len(indices_of_functions_to_refit)})")
@@ -492,10 +497,10 @@ class FunctionSet:
         new_function_set = lfs.FunctionSet(functions=new_functions, function_names=self.function_names)
         return new_function_set
 
-    def project(self, points:np.ndarray, num_workers:int=None, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
+    def project(self, points:npt.NDArray[np.float64], num_workers:int=None, direction:npt.NDArray[np.float64]=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=None, plot:bool=False,
-                extrema=False, force_reprojection=False, priority_inds=None, priority_eps=1e-3,
-                grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None) -> csdl.Variable:
+                extrema=False, force_reprojection=False, priority_inds:Optional[list[int]]=None, priority_eps:float=1e-3,
+                grid_search_evaluation_cutoff:Optional[float]=None, grid_search_subtraction_cutoff:Optional[float]=None) -> list[tuple[int, npt.NDArray[np.float64]]]:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -684,13 +689,13 @@ class FunctionSet:
 
             return name_space_dict, long_name_space
 
-    def set_coefficients(self, coefficients:list[csdl.Variable], function_indices:list[int]=None) -> None:
+    def set_coefficients(self, coefficients:Sequence[csdl.Variable], function_indices:Optional[Sequence[int]]=None) -> None:
         '''
         Sets the coefficients of the functions in the function set with the given indices.
 
         Parameters
         ----------
-        coefficients : list[csdl.Variable]
+        coefficients : Union[csdl.Variable, Sequence[csdl.Variable]]
             The coefficients to set the functions to.
         function_indices : list[int]
             The indices of the functions to set the coefficients of. If None, all the functions are set to the coefficients.
@@ -724,8 +729,8 @@ class FunctionSet:
         for function_name in function_names:
             function_indices.append([self.function_names.keys()][[self.function_names.values()].index(function_name)])
         return function_indices
-    
-    def search_for_function_indices(self, search_strings:list[str], ignore_names:list[str]=[]) -> list[int]:
+
+    def search_for_function_indices(self, search_strings:list[str], ignore_names:Optional[list[str]]=None) -> list[int]:
         '''
         Searches for the indices of the functions in the function set with the given search string.
 
@@ -741,14 +746,16 @@ class FunctionSet:
         '''
         if isinstance(search_strings, str):
             search_strings = [search_strings]
+        if ignore_names is None:
+            ignore_names = []
 
         function_indices = []
         for i, function_name in self.function_names.items():
             if any(s in function_name for s in search_strings) and not any(s in function_name for s in ignore_names):
                 function_indices.append(i)
         return function_indices
-    
-    def create_subset(self, function_indices:list[int]=None, function_search_names:list[str]=None, ignore_names:list[str]=[], name:str=None) -> lfs.FunctionSet:
+
+    def create_subset(self, function_indices:list[int]=None, function_search_names:list[str]=None, ignore_names:list[str]=None, name:str=None) -> lfs.FunctionSet:
         '''
         Creates a subset of the function set with the given indices. Either the function indices or the function search names must be provided.
 
@@ -828,9 +835,9 @@ class FunctionSet:
             plotter.show(mesh)
         return mesh
 
-    def plot(self, camera:dict=None, screenshot:str="",title:str=None, interactive:bool=True, point_types:list=['evaluated_points'], plot_types:list=['function'],
-              opacity:float=1., color:str|lfs.FunctionSet='#00629B', color_map:str='jet', surface_texture:str="",
-              line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
+    def plot(self, camera:Optional[dict[str,tuple[float]]]=None, screenshot:str="",title:Optional[str]=None, interactive:bool=True, point_types:list[str]=['evaluated_points'], plot_types:list[str]=['function'],
+              opacity:float=1., color:Union[str,lfs.FunctionSet]='#00629B', color_map:str='jet', surface_texture:str="",
+              line_width:float=3., additional_plotting_elements:list[vedo.PointsVisual]=[], show:bool=True) -> list[vedo.PointsVisual]:
         '''
         Plots the function set.
 

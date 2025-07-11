@@ -3,20 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 import csdl_alpha as csdl
 import numpy as np
+import numpy.typing as npt
 import scipy.sparse as sps
 
 import pickle
 from pathlib import Path
 import string
 import random
+from typing import Union, Optional, Sequence
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
+import vedo
 
 
 
 class Function:
-    def __init__(self, space:lfs.FunctionSpace, coefficients:csdl.Variable, name:str=None):
+    def __init__(self, space:lfs.FunctionSpace, coefficients:csdl.Variable, name:Optional[str]=None):
         '''
         Function class. This class is used to represent a function in a given function space. The function space is used to evaluate the function at
         given coordinates, refit the function, and project points onto the function.
@@ -89,17 +92,17 @@ class Function:
             coefficients = coefficients.reshape((basis_matrix.shape[1], self.num_physical_dimensions))
 
         return basis_matrix, coefficients
-    
-    def evaluate(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
-                 plot:bool=False, non_csdl:bool=False) -> csdl.Variable:
+
+    def evaluate(self, parametric_coordinates:npt.NDArray[np.float64], parametric_derivative_orders:Optional[Sequence[int]]=None, coefficients:Optional[csdl.Variable]=None,
+                 plot:bool=False, non_csdl:bool=False) -> Union[csdl.Variable, npt.NDArray[np.float64]]:
         '''
         Evaluates the function.
 
         Parameters
         ----------
-        parametric_coordinates : np.ndarray -- shape=(num_points, num_parametric_dimensions)
+        parametric_coordinates : npt.NDArray[np.float64] -- shape=(num_points, num_parametric_dimensions)
             The coordinates at which to evaluate the function.
-        parametric_derivative_order : tuple = None -- shape=(num_points,num_parametric_dimensions)
+        parametric_derivative_order : Sequence[int] = None -- shape=(num_points,num_parametric_dimensions)
             The order of the parametric derivatives to evaluate.
         coefficients : csdl.Variable = None -- shape=coefficients_shape
             The coefficients of the function.
@@ -119,7 +122,10 @@ class Function:
         if non_csdl and isinstance(coefficients, csdl.Variable):
             coefficients = coefficients.value
 
-        values = self.space._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
+        if non_csdl:
+            values : npt.NDArray[np.float64] = self.space._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
+        else:
+            values : csdl.Variable = self.space._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
 
         if plot:
             # Plot the function
@@ -731,7 +737,7 @@ class Function:
 
     def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
               opacity:float=1., color:str|Function='#00629B', color_map:str='jet', surface_texture:str="",
-              line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
+              line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list[vedo.PointsVisual]:
         '''
         Plots the B-spline Surface.
 
@@ -806,7 +812,7 @@ class Function:
         return plotting_elements
 
     def plot_points(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet', 
-                    size:float=10., additional_plotting_elements:list=[], show:bool=True) -> list:
+                    size:float=10., additional_plotting_elements:list=[], show:bool=True) -> list[vedo.PointsVisual]:
         '''
         Plots the points of the function.
 

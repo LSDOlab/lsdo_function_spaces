@@ -1,4 +1,6 @@
 import numpy as np
+import numpy.typing as npt
+from typing import Optional, Union
 import scipy.sparse as sps
 from lsdo_function_spaces import Function
 import csdl_alpha as csdl
@@ -34,7 +36,7 @@ class BSplineSpace(LinearFunctionSpace):
     compute_basis_matrix(parametric_coordinates: np.ndarray, parametric_derivative_orders: np.ndarray = None) -> sps.csc_matrix:
         Computes the basis matrix for the given parametric coordinates and derivative orders.
     '''
-    def __init__(self, num_parametric_dimensions:int, degree:tuple, coefficients_shape:tuple, knots:np.ndarray=None, knot_indices:list[np.ndarray]=None):
+    def __init__(self, num_parametric_dimensions:int, degree:Union[int, tuple[int,...]], coefficients_shape:tuple[int,...], knots:Optional[npt.NDArray[np.float64]]=None, knot_indices:list[npt.NDArray[np.int64], ...]=None):
         # TODO: replace num_parametric_dimensions with len(coefficients_shape)
         self.degree = degree
         self.knots = knots

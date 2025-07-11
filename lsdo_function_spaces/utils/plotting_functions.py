@@ -3,6 +3,7 @@
 
 import numpy as np
 from typing import Union
+import vedo
 
 def show_plot(plotting_elements:list, title:str,  axes:bool=True, view_up:str="z", interactive:bool=True, camera:dict={}, screenshot:str=""):
     '''
@@ -78,7 +79,7 @@ def plot_points(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray
 
 
 def plot_curve(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray]='#00629B', color_map:str='jet', line_width:float=3.,
-              additional_plotting_elements:list=[], show:bool=True):
+              additional_plotting_elements:list=[], show:bool=True) -> list[vedo.Line]:
     '''
     Plots the B-spline Surface.
 
