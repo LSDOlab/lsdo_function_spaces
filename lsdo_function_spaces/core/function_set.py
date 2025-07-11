@@ -15,6 +15,7 @@ from typing import Optional, Union, Sequence
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
+from lsdo_function_spaces.utils.internal_utilities import get_projection_squared_distances
 
 def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=None):
     # New approach - 2 stages: 
@@ -258,6 +259,26 @@ class FunctionSet:
             coefficients.append([function.coefficients.reshape((shape))])
         coefficients = csdl.blockmat(coefficients)
         return coefficients
+    
+    def unstack_coefficients(self, coefficients:csdl.Variable) -> None:
+        '''
+        Loads stacked coefficients into the function in the function set.
+
+        Parameters
+        ----------
+        coefficients : csdl.Variable
+            The stacked coefficients of the functions in the function set.
+        '''
+        start = 0
+        for i, function in self.functions.items():
+            shape = function.coefficients.shape
+            if len(shape) == 1:
+                shape = (1, shape[0])
+            if len(shape) >= 2:
+                shape = (np.prod(shape[:-1]), shape[-1])
+            end = start + shape[0]
+            function.coefficients = coefficients[start:end].reshape(shape)
+            start = end
 
     def copy(self) -> lfs.FunctionSet:
         '''
@@ -289,6 +310,9 @@ class FunctionSet:
         '''
         u_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(1,0))
         v_vectors = self.evaluate(parametric_coordinates, parametric_derivative_orders=(0,1))
+        if len(u_vectors.shape) == 1:
+            u_vectors = u_vectors.reshape((1, -1))
+            v_vectors = v_vectors.reshape((1, -1))
         normals = csdl.cross(u_vectors, v_vectors, axis=1)
         normals = normals / (csdl.expand(csdl.norm(normals + 1e-8, axes=(1,)), (normals.shape), action='i->ij') + 1e-12)
 
@@ -500,7 +524,8 @@ class FunctionSet:
     def project(self, points:npt.NDArray[np.float64], num_workers:int=None, direction:npt.NDArray[np.float64]=None, grid_search_density_parameter:int=1, 
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=None, plot:bool=False,
                 extrema=False, force_reprojection=False, priority_inds:Optional[list[int]]=None, priority_eps:float=1e-3,
-                grid_search_evaluation_cutoff:Optional[float]=None, grid_search_subtraction_cutoff:Optional[float]=None) -> list[tuple[int, npt.NDArray[np.float64]]]:
+                grid_search_evaluation_cutoff:Optional[float]=None, grid_search_subtraction_cutoff:Optional[float]=None,
+                grid_search_density_cutoff:int=50) -> list[tuple[int, npt.NDArray[np.float64]]]:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -525,13 +550,26 @@ class FunctionSet:
         projection_tolerance : float = None
             The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
             using a finer grid search density parameter for the points that are not within the tolerance distance. 
-            NOTE: This is only for use when the points are within the geometry that they are being projected onto.
+            NOTE: This is only for use when the points are within the geometry that they are being projected onto, or, if a direciton is
+             specified, the axis of the projection intersects the geometry.
         plot : bool = False
             Whether or not to plot the projection.
         extrema : bool = False
             Whether or not to project onto the extrema of the function.
         force_reprojection : bool = False
             Whether or not to force the projection to be recomputed.
+        priority_inds : list[int] = None
+            The indices of the functions to prioritize in the projection. If None, no functions are prioritized.
+        priority_eps : float = 1e-3
+            The epsilon value to use for the prioritized functions. If None, no functions are prioritized.
+        grid_search_evaluation_cutoff : int = None
+            idk what this does
+        grid_search_subtraction_cutoff : int = None
+            idk what this does
+        grid_search_density_cutoff : int = 100
+            The cutoff for the grid search density parameter. If the grid search density parameter exceeds this value during refinement,
+              the projection will be stopped.
+            This is to prevent the projection from taking too long. If the projection is stopped, a warning will be printed.
         '''
         if num_workers is None:
             num_workers = lfs.num_workers
@@ -546,7 +584,8 @@ class FunctionSet:
                                                         projection_tolerance,
                                                         extrema,
                                                         priority_inds, priority_eps,
-                                                        force_reprojection)
+                                                        force_reprojection,
+                                                        grid_search_density_cutoff)
         if isinstance(output, list):
             parametric_coordinates = output
             if plot:
@@ -605,23 +644,34 @@ class FunctionSet:
 
         # ----- If projection tolerance is not None, refine the projection for the necessary points -----
         if projection_tolerance is not None:
-            options['projection_tolerance'] = projection_tolerance
-            # Find the points that are not within the projection tolerance
-            if direction is None:
-                distances = np.linalg.norm(points - self.evaluate(parametric_coordinates).value, axis=1)
-            else:
-                function_values = self.evaluate(parametric_coordinates, non_csdl=True)
-                displacement = (points - function_values).reshape((-1,))
-                distances = np.linalg.norm(np.cross(displacement, direction), axis=1)
 
-            # Get the indices of the points that are not within the projection tolerance
-            indices = np.where(distances > projection_tolerance)[0]
+            grid_search_density_parameter *= 1.5
 
-            # Refine the projection for the points that are not within the projection tolerance
-            if len(indices) > 0:
+            while True:
+                options['grid_search_density_parameter'] = grid_search_density_parameter
+
+                squared_distances = get_projection_squared_distances(points, self.evaluate(parametric_coordinates, non_csdl=True), direction)
+
+                # Get the indices of the points that are not within the projection tolerance
+                indices = np.where(squared_distances > projection_tolerance**2)[0]
+
+                if len(indices) == 0:
+                    break
+
+                print(f'refining to {grid_search_density_parameter} for {len(indices)} points')
+
                 refined_parametric_coordinates = find_best_surface_chunked(points[indices], self.functions, options)
                 for i, index in enumerate(indices):
                     parametric_coordinates[index] = refined_parametric_coordinates[i]
+
+                grid_search_density_parameter *= 1.5
+                if grid_search_density_parameter > grid_search_density_cutoff:
+                    print('--'*50)
+                    print("WARNING: Projection refinement stopped because it took more than 10 refinement steps!")
+                    print("This is likely because not all of the points are within the function being projected onto.")
+                    print(f"{len(indices)} points were not within the projection tolerance of {projection_tolerance}.")
+                    print('--'*50)
+                    break
 
         characters = string.ascii_letters + string.digits  # Alphanumeric characters
         # Generate a random string of the specified length
@@ -648,7 +698,8 @@ class FunctionSet:
     def _check_whether_to_load_projection(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1,
                                           max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=None, 
                                           extrema:bool=False, priority_inds=None, priority_eps=1e-3,
-                                          force_reprojection:bool=False) -> bool:
+                                          force_reprojection:bool=False,
+                                          grid_search_density_cutoff=100) -> bool:
         name_space = f'{self.name}'
 
         name_space = ''
@@ -666,6 +717,8 @@ class FunctionSet:
             name_space += f'_{function_index}_{str(coefficients)}_{str(coeff_shape)}'
         
         long_name_space = name_space + f'_{str(points)}_{str(direction)}_{grid_search_density_parameter}_{max_newton_iterations}_{newton_tolerance}_{projection_tolerance}_{extrema}_{priority_inds}_{priority_eps}'
+        if projection_tolerance is not None:
+            long_name_space += f'_{grid_search_density_cutoff}'
 
         projections_folder = 'stored_files/projections'
         name_space_file_path = projections_folder + '/name_space_dict.pickle'

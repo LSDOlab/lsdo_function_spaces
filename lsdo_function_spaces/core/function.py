@@ -15,6 +15,7 @@ from typing import Union, Optional, Sequence
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
 import vedo
+from lsdo_function_spaces.utils.internal_utilities import get_projection_squared_distances
 
 
 
@@ -181,7 +182,7 @@ class Function:
 
         # compute areas of the quadrilaterals
         grid_values = area.evaluate(parametric_coordinates=parametric_grid.reshape(-1,2)).reshape((grid_n, grid_n, -1))
-        output = csdl.Variable(value=np.zeros((grid_n-1, grid_n-1)))
+        output = csdl.Variable(value=np.zeros(values.shape))
         for i in csdl.frange(grid_n-1):
             for j in csdl.frange(grid_n-1):
                 area_1 = csdl.norm(csdl.cross(grid_values[i+1,j]-grid_values[i,j], grid_values[i,j+1]-grid_values[i,j]) + 1e-8)/2
@@ -265,7 +266,7 @@ class Function:
                 max_newton_iterations:int=100, newton_tolerance:float=1e-12, projection_tolerance:float=None,
                 plot:bool=False, force_reproject:bool=False, 
                 grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                do_pickles=True) -> csdl.Variable:
+                do_pickles=True, grid_search_density_cutoff=50) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -290,7 +291,8 @@ class Function:
         projection_tolerance : float = None
             The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
             using a finer grid search density parameter for the points that are not within the tolerance distance. 
-            NOTE: This is only for use when the points are within the geometry that they are being projected onto.
+            NOTE: This is only for use when the points are within the geometry that they are being projected onto, or, if a direction is provided,
+            the axis defined by the direction intersects the geometry.
         plot : bool = False
             Whether or not to plot the projection.
         force_reproject : bool = False
@@ -303,6 +305,9 @@ class Function:
             will be subtracted in sections. If None, no bunching will be done.
         do_pickles : bool = True
             If True, the projection will be saved to a file. The file will be saved in the stored_files/projections directory.
+        grid_search_density_cutoff : int = 50
+            The cutoff for the grid search density during refinement. If the grid search density is greater than this, the refinement will be
+            terminated and a warning will be printed.
         '''
         if isinstance(points, csdl.Variable):
             points = points.value
@@ -321,7 +326,7 @@ class Function:
                                                                     grid_search_density_parameter, max_newton_iterations,
                                                                     newton_tolerance, projection_tolerance, 
                                                                     grid_search_evaluation_cutoff, grid_search_subtraction_cutoff,
-                                                                    do_pickles=do_pickles)
+                                                                    do_pickles=do_pickles, grid_search_density_cutoff=grid_search_density_cutoff)
 
                 if plot:
                     projection_results = self.evaluate(parametric_coordinates).value
@@ -363,7 +368,7 @@ class Function:
                 grid_search_values = np.zeros((num_grid_points, self.coefficients.shape[-1]))
                 start_index = 0
                 for i in range(num_sections):
-                    print(i, '/', num_sections)
+                    # print(i, '/', num_sections)
                     end_index = start_index + section_size
                     grid_search_values[start_index:end_index] = self.evaluate(parametric_coordinates=parametric_grid_search[start_index:end_index],
                                                                               coefficients=self.coefficients.value, non_csdl=True)
@@ -386,7 +391,7 @@ class Function:
             section_size = int(np.ceil(points.shape[0]/num_sections))
             closest_point_indices = np.zeros((points.shape[0],), dtype=int)
             for i in range(num_sections):
-                print(i, '/', num_sections)
+                # print(i, '/', num_sections)
                 start_index = i*section_size
                 end_index = min((i+1)*section_size, points.shape[0])
                 points_expanded = np.repeat(points[start_index:end_index,np.newaxis,:], grid_search_values.shape[0], axis=1)
@@ -603,7 +608,7 @@ class Function:
             current_guess = self.refine_projection(points, current_guess, direction,
                                                             grid_search_density_parameter, max_newton_iterations,
                                                             newton_tolerance, projection_tolerance=projection_tolerance, 
-                                                            do_pickles=do_pickles)
+                                                            do_pickles=False)
 
         if plot:
             projection_results = self.evaluate(current_guess).value
@@ -627,12 +632,11 @@ class Function:
                 pickle.dump(current_guess, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         return current_guess
-    
 
     def refine_projection(self, points:np.ndarray, parametric_coordinates:np.ndarray, direction:np.ndarray, initial_grid_search_density_parameter:int=1,
                           max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=1e-6,
                           grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                          do_pickles=True) -> np.ndarray:
+                          do_pickles=True, grid_search_density_cutoff=50) -> np.ndarray:
         '''
         For projections where the points are in the geometry, this method finds the points that are not within the tolerance distance and reprojects
         those points using a finer grid search density parameter.
@@ -641,27 +645,38 @@ class Function:
             points = points.value
         points_flattened = points.reshape((-1,3))
         previous_projection_results = self.evaluate(parametric_coordinates=parametric_coordinates, non_csdl=True)
-        distances = np.linalg.norm(points_flattened - previous_projection_results, axis=-1)
-        points_to_reproject = np.where(distances > projection_tolerance)[0]
+        
+
+        squared_distances = get_projection_squared_distances(points_flattened, previous_projection_results, direction)
+        points_to_reproject = np.where(squared_distances > projection_tolerance**2)[0]
+        distances = np.sqrt(squared_distances[points_to_reproject])
+
         if len(points_to_reproject) == 0:
             return parametric_coordinates
         else:
             counter = 0
             grid_search_density_parameter = initial_grid_search_density_parameter*1.2
             while len(points_to_reproject) > 0:
-                print('Total tolerance norm: ', np.linalg.norm(distances))
-                print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
+                # print('Total tolerance norm: ', np.linalg.norm(distances))
+                # print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
                 new_parametric_coordinates = self.project(points_flattened[points_to_reproject], direction, grid_search_density_parameter=grid_search_density_parameter,
                                                           max_newton_iterations=max_newton_iterations, newton_tolerance=newton_tolerance, force_reproject=False,
                                                           grid_search_evaluation_cutoff=grid_search_evaluation_cutoff, 
                                                           grid_search_subtraction_cutoff=grid_search_subtraction_cutoff)
                 parametric_coordinates[points_to_reproject] = new_parametric_coordinates
                 new_projection_results = self.evaluate(parametric_coordinates=new_parametric_coordinates, non_csdl=True)
-                distances = np.linalg.norm(points_flattened[points_to_reproject] - new_projection_results, axis=1)
-                points_to_reproject = points_to_reproject[np.where(distances > projection_tolerance)[0]]
+                
+                # distances = np.linalg.norm(points_flattened[points_to_reproject] - new_projection_results, axis=1)
+                # points_to_reproject = points_to_reproject[np.where(distances > projection_tolerance)[0]]
+                
+                squared_distances = get_projection_squared_distances(points_flattened[points_to_reproject], new_projection_results, direction)
+                new_points_to_reproject = np.where(squared_distances > projection_tolerance**2)[0]
+                distances = np.sqrt(squared_distances[new_points_to_reproject])
+                points_to_reproject = points_to_reproject[new_points_to_reproject]
+
                 grid_search_density_parameter *= 1.5
                 counter += 1
-                if counter > 10:
+                if grid_search_density_parameter > grid_search_density_cutoff:
                     print('--'*50)
                     print("WARNING: Projection refinement stopped because it took more than 10 refinement steps!")
                     print("This is likely because not all of the points are within the function being projected onto.")
