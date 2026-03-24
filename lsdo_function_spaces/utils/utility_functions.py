@@ -1,7 +1,9 @@
 import numpy as np
+import numpy.typing as npt
+from typing import Optional
 import lsdo_function_spaces as lfs
 
-def create_b_spline_from_corners(corners:np.ndarray, degree:tuple=(3,), num_coefficients:tuple=(10,), knot_vectors:tuple=None,
+def create_b_spline_from_corners(corners:npt.NDArray[np.float64], degree:tuple[int,...]=(3,), num_coefficients:tuple[int,...]=(10,), knot_vectors:Optional[tuple[npt.NDArray[np.float64]]]=None,
                                  name:str='b_spline_hyper_volume') -> lfs.Function:
     '''
     Creates a B-Spline volume from a set of corners.

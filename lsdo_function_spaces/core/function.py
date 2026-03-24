@@ -607,7 +607,9 @@ class Function:
         if projection_tolerance is not None:
             current_guess = self.refine_projection(points, current_guess, direction,
                                                             grid_search_density_parameter, max_newton_iterations,
-                                                            newton_tolerance, projection_tolerance=projection_tolerance, 
+                                                            newton_tolerance, projection_tolerance=projection_tolerance,
+                                                            grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
+                                                            grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,
                                                             do_pickles=False)
 
         if plot:
@@ -750,9 +752,9 @@ class Function:
 
             return name_space_dict, long_name_space
 
-    def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
+    def plot(self, point_types:list[str]=['evaluated_points'], plot_types:list[str]=['function'],
               opacity:float=1., color:str|Function='#00629B', color_map:str='jet', surface_texture:str="",
-              line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list[vedo.PointsVisual]:
+              line_width:float=3., additional_plotting_elements:list[vedo.PointsVisual]=[], show:bool=True) -> list[vedo.PointsVisual]:
         '''
         Plots the B-spline Surface.
 
@@ -981,7 +983,7 @@ class Function:
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 50
+            num_points = 400
 
             # Generate meshgrid of parametric coordinates
             mesh_grid_input = []
@@ -1086,7 +1088,7 @@ class Function:
         
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 50
+            num_points = 200
 
             # Generate meshgrid of parametric coordinates
             linspace_dimension = np.linspace(0., 1., num_points)

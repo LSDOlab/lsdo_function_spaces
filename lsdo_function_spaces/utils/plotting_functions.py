@@ -53,6 +53,11 @@ def plot_points(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray
 
     plotting_elements = additional_plotting_elements.copy()
 
+    if len(points.shape) == 1 and points.size > 3:
+        points = points.reshape((-1,1))
+        points_expanded = np.zeros((points.shape[0], 3))
+        points_expanded[:,:points.shape[1]] = points
+        points = points_expanded
     if points.shape[-1] > 3:
         raise ValueError('The points must have 3 or fewer physical dimensions (the size of the last axis).' +  
                          f'The provided points have {points.shape[-1]} physical dimensions. You probably want to reshape.')
@@ -103,6 +108,8 @@ def plot_curve(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray]
     
     plotting_elements = additional_plotting_elements.copy()
 
+    if len(points.shape) == 1:
+        points = points.reshape((-1,1))
     if points.shape[-1] > 3:
         raise ValueError('The points must have 3 or fewer physical dimensions (the size of the last axis).' +  
                          f'The provided points have {points.shape[-1]} physical dimensions. You probably want to reshape.')
@@ -209,7 +216,7 @@ def plot_surface(points:np.ndarray, plot_types:list=['function'], opacity:float=
 
     return plotting_elements
 
-def get_surface_mesh(surface, color=None, grid_n=25, offset=0):
+def get_surface_mesh(surface, color=None, grid_n=50, offset=0):
     import lsdo_function_spaces as fs
     surface:fs.Function = surface
 

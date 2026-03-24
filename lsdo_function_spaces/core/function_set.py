@@ -981,13 +981,13 @@ class FunctionSet:
                                                      spaces=parallel_spaces, connections=self.space.connections)
         return parallel_function_set
 
-    def generate_parametric_grid(self, grid_resolution:tuple) -> list[tuple[int, np.ndarray]]:
+    def generate_parametric_grid(self, grid_resolution:Union[tuple[int,...], int]) -> list[tuple[int, npt.NDArray[np.float64]]]:
         '''
         Generates a parametric grid for the function set.
 
         Parameters
         ----------
-        grid_resolution : tuple
+        grid_resolution : tuple[int, ...] or int
             The resolution of the grid in each parametric dimension.
 
         Returns
