@@ -10,7 +10,7 @@ import pickle
 from pathlib import Path
 import string
 import random
-import vedo
+import pyvista as pv
 from typing import Optional, Union, Sequence
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
@@ -313,17 +313,18 @@ class FunctionSet:
         if len(u_vectors.shape) == 1:
             u_vectors = u_vectors.reshape((1, -1))
             v_vectors = v_vectors.reshape((1, -1))
-        normals = csdl.cross(u_vectors, v_vectors, axis=1)
+        normals = csdl.cross(v_vectors, u_vectors, axis=1)
         normals = normals / (csdl.expand(csdl.norm(normals + 1e-8, axes=(1,)), (normals.shape), action='i->ij') + 1e-12)
 
         if plot:
-            import vedo
             import lsdo_function_spaces as lfs
-            scale = 1e-1
+            scale = 2e-1
             points = self.evaluate(parametric_coordinates, non_csdl=True)
             plotting_elements = self.plot(opacity=0.8, show=False)
-            varrows = vedo.Arrows(points, points+scale*normals.value, c='black')
-            plotting_elements.append(varrows)
+            arrow_data = pv.PolyData(points)
+            arrow_data["vectors"] = normals.value * scale
+            arrows = arrow_data.glyph(orient="vectors", scale="vectors", factor=1.0)
+            plotting_elements.append({"mesh": arrows, "kwargs": {"color": "red"}})
             lfs.show_plot(plotting_elements, 'normals')
         return normals
 
@@ -591,9 +592,10 @@ class FunctionSet:
             if plot:
                 projection_results = self.evaluate(parametric_coordinates).value
                 plotting_elements = []
-                plotting_elements.append(lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False))
+                plotting_elements = lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False)
                 # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
-                plotting_elements.append(lfs.plot_points(projection_results, color='#ff0000', size=5, show=False))
+                plotting_elements = lfs.plot_points(projection_results, color='#ff0000', size=5, show=False,
+                                                    additional_plotting_elements=plotting_elements)
                 self.plot(opacity=0.3, additional_plotting_elements=plotting_elements, show=True)
             return parametric_coordinates
         else:
@@ -632,8 +634,12 @@ class FunctionSet:
             # pool = Pool(num_workers)
             # results = pool.map(find_best_surface_chunked, chunks)
 
-            with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-                results = executor.map(find_best_surface_chunked, chunks)
+            try:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+                    results = executor.map(find_best_surface_chunked, chunks)
+            except (PermissionError, RuntimeError):
+                # Fall back to serial if process pools are restricted or unsafe under spawn.
+                results = map(lambda c: find_best_surface_chunked(c, self.functions, options), chunks)
 
             parametric_coordinates = []
             for result in results:
@@ -688,9 +694,10 @@ class FunctionSet:
         if plot:
             projection_results = self.evaluate(parametric_coordinates).value
             plotting_elements = []
-            plotting_elements.append(lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False))
+            plotting_elements = lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False)
             # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
-            plotting_elements.append(lfs.plot_points(projection_results, color='#ff0000', size=5, show=False))
+            plotting_elements = lfs.plot_points(projection_results, color='#ff0000', size=5, show=False,
+                                                additional_plotting_elements=plotting_elements)
             self.plot(opacity=0.3, additional_plotting_elements=plotting_elements, show=True)
 
         return parametric_coordinates
@@ -856,7 +863,6 @@ class FunctionSet:
             See 
 
         '''
-        import vedo
         from lsdo_function_spaces.utils.plotting_functions import get_surface_mesh
 
         vertices = []
@@ -875,22 +881,26 @@ class FunctionSet:
             vertices.extend(fn_vertices)
             faces.extend(fn_faces)
 
-        mesh = vedo.Mesh([vertices, faces]).opacity(opacity).lighting(surface_texture)
+        faces_array = []
+        for face in faces:
+            faces_array.extend([len(face), *face])
+        mesh = pv.PolyData(np.array(vertices), np.array(faces_array, dtype=np.int64))
 
         if c_points is not None:
-            mesh.cmap(color_map, c_points)
-            mesh.add_scalarbar()
-        else:
-            mesh.color(color)
+            mesh["scalars"] = c_points
 
         if show:
-            plotter = vedo.Plotter()
-            plotter.show(mesh)
+            plotter = pv.Plotter()
+            if c_points is not None:
+                plotter.add_mesh(mesh, opacity=opacity, cmap=color_map, show_scalar_bar=True)
+            else:
+                plotter.add_mesh(mesh, opacity=opacity, color=color)
+            plotter.show()
         return mesh
 
     def plot(self, camera:Optional[dict[str,tuple[float]]]=None, screenshot:str="",title:Optional[str]=None, interactive:bool=True, point_types:list[str]=['evaluated_points'], plot_types:list[str]=['function'],
               opacity:float=1., color:Union[str,lfs.FunctionSet]='#00629B', color_map:str='jet', surface_texture:str="",
-              line_width:float=3., additional_plotting_elements:list[vedo.PointsVisual]=[], show:bool=True) -> list[vedo.PointsVisual]:
+              line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
         Plots the function set.
 
@@ -906,23 +916,23 @@ class FunctionSet:
             The 6 digit color code to plot the B-spline as. If a FunctionSet is provided, the FunctionSet will be used to color the B-spline.
         surface_texture : str = "" {"metallic", "glossy", ...}, optional
             The surface texture to determine how light bounces off the surface.
-            See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+            This is kept for API compatibility.
         color_map : str = 'jet'
             The color map to use if the color is a function.
         additional_plotting_elemets : list
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            Plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The plotting elements that were plotted.
         '''
-        import vedo
-
+        import lsdo_function_spaces.utils.plotting_functions as pf
         # Then there must be a discrete index so loop over subfunctions and plot them
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         color_min = None
         color_max = None
         for i, function in self.functions.items():
@@ -944,12 +954,8 @@ class FunctionSet:
             else:
                 plotting_elements = out
         if isinstance(color, lfs.FunctionSet):
-            # plot some invisible points to get the scalar bar
-            element = vedo.Points(np.zeros((2,3))).opacity(0)
             print('Color values', color_min, color_max)
-            element.cmap(color_map, [color_min, color_max])
-            plotting_elements.append(element)
-            scalarbar = plotting_elements[-1].add_scalarbar()
+            plotting_elements.append(pf.make_scalar_bar_element(color_min, color_max, color_map=color_map))
         if show:
             if self.name is not None:
                 if title is not None:

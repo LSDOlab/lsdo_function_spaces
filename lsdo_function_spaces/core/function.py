@@ -14,7 +14,6 @@ from typing import Union, Optional, Sequence
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
-import vedo
 from lsdo_function_spaces.utils.internal_utilities import get_projection_squared_distances
 
 
@@ -38,6 +37,7 @@ class Function:
         self.space = space
         self.coefficients = coefficients
         self.name = name
+        self.triangulation = None
 
         if not isinstance(self.coefficients, csdl.Variable):
             self.coefficients = csdl.Variable(value=self.coefficients)
@@ -331,8 +331,9 @@ class Function:
                 if plot:
                     projection_results = self.evaluate(parametric_coordinates).value
                     plotting_elements = []
-                    plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
-                    plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
+                    plotting_elements = lfs.plot_points(points, color='#00629B', size=10, show=False)
+                    plotting_elements = lfs.plot_points(projection_results, color='#C69214', size=10, show=False,
+                                                        additional_plotting_elements=plotting_elements)
                     self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
                 return parametric_coordinates
             else:
@@ -613,9 +614,11 @@ class Function:
         if plot:
             projection_results = self.evaluate(current_guess).value
             plotting_elements = []
-            plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
-            plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
-            self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
+            plotting_elements = lfs.plot_points(points, color='#00629B', size=10, show=False)
+            plotting_elements = lfs.plot_points(projection_results, color='#C69214', size=10, show=False,
+                                                additional_plotting_elements=plotting_elements)
+            # print("plotting function now")
+            self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True, color="#FF8400")
 
         if do_pickles:
             # Save the projection
@@ -752,7 +755,7 @@ class Function:
 
     def plot(self, point_types:list=['evaluated_points'], plot_types:list=['function'],
               opacity:float=1., color:str|Function='#00629B', color_map:str='jet', surface_texture:str="",
-              line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list[vedo.PointsVisual]:
+              line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
         Plots the B-spline Surface.
 
@@ -768,23 +771,25 @@ class Function:
             The 6 digit color code to plot the B-spline as. If a function is provided, the function will be used to color the B-spline.
         surface_texture : str = "" {"metallic", "glossy", ...}, optional
             The surface texture to determine how light bounces off the surface.
-            See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+            This is kept for API compatibility.
         color_map : str = 'jet'
             The color map to use if the color is a function.
         additional_plotting_elemets : list
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            PyVista plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The PyVista plotting elements that were plotted.
         '''
+        import lsdo_function_spaces.utils.plotting_functions as pf
         if self.coefficients is None:
             raise ValueError("The coefficients of the function are not defined.")
         
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         for point_type in point_types:
             if point_type not in ['evaluated_points', 'coefficients']:
                 raise ValueError(f"Invalid point type. Must be 'evaluated_points' or 'coefficients'. Got {point_type}.")
@@ -827,7 +832,7 @@ class Function:
         return plotting_elements
 
     def plot_points(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet', 
-                    size:float=10., additional_plotting_elements:list=[], show:bool=True) -> list[vedo.PointsVisual]:
+                    size:float=10., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
         Plots the points of the function.
 
@@ -844,14 +849,14 @@ class Function:
         size : float = 10.
             The size of the points.
         additional_plotting_elemets : list = []
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            PyVista plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool = True
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The PyVista plotting elements that were plotted.
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
         raise NotImplementedError("This function is not implemented yet.")
@@ -872,20 +877,21 @@ class Function:
         color_map : str = 'jet'
             The color map to use if the color is a function.
         additional_plotting_elemets : list = []
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            Plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool = True
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The plotting elements that were plotted.
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
         if self.space.num_parametric_dimensions != 1:
             raise ValueError("This function is not a curve and cannot be plotted as one.")
         
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         
         # region Generate the points to plot
         if point_type == 'evaluated_points':
@@ -893,7 +899,7 @@ class Function:
             parametric_coordinates = np.linspace(0., 1., num_points).reshape((-1,1))
             function_values = self.evaluate(parametric_coordinates, non_csdl=True)
             if len(function_values.shape) == 1:
-                function_values = function_values.reshape((-1,1))   # Here we want the physical dimension separate for vedo so put it back
+                function_values = function_values.reshape((-1,1))   # Keep physical dimension separate for plotting
 
             # scale u axis to be more visually clear based on scaling of parameter
             if function_values.shape[-1] < 3:   # Plot against u coordinate
@@ -959,37 +965,36 @@ class Function:
             The color map to use if the color is a function.
         surface_texture : str = ""
             The surface texture to determine how light bounces off the surface.
-            See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+            This is kept for API compatibility.
         line_width : float = 3.
             The width of the lines if the plot type is wireframe.
         additional_plotting_elemets : list = []
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            Plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool = True
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The plotting elements that were plotted.
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
         if self.space.num_parametric_dimensions != 2:
             raise ValueError("This function is not a surface and cannot be plotted as one.")
 
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         color_is_function = False
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 50
-
-            # Generate meshgrid of parametric coordinates
+            num_points = 100            # Generate meshgrid of parametric coordinates
             mesh_grid_input = []
             for dimension_index in range(self.space.num_parametric_dimensions):
                 mesh_grid_input.append(np.linspace(0., 1., num_points))
             parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
-            for dimensions_index in range(self.space.num_parametric_dimensions):
-                parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
+            # np.meshgrid returns a tuple of arrays; convert to list so we can reshape elements
+            parametric_coordinates_tuple = [pc.reshape((-1, 1)) for pc in parametric_coordinates_tuple]
             parametric_coordinates = np.hstack(parametric_coordinates_tuple)
             
             function_values = self.evaluate(parametric_coordinates, non_csdl=True).reshape((num_points,num_points,-1))
@@ -1067,18 +1072,18 @@ class Function:
             The color map to use if the color is a function.
         surface_texture : str = ""
             The surface texture to determine how light bounces off the surface.
-            See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+            This is kept for API compatibility.
         line_width : float = 3.
             The width of the lines if the plot type is wireframe.
         additional_plotting_elemets : list = []
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            Plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool = True
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting elements are still returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting elements are still returned.
         
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The plotting elements that were plotted.
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
         if self.space.num_parametric_dimensions != 3:
@@ -1139,7 +1144,8 @@ class Function:
         # endregion Generate the points to plot
 
         # Call general plot volume function to plot the points with the colors
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         for plot_type in plot_types:
             if plot_type not in ['function', 'wireframe', 'point_cloud']:
                 raise ValueError("Invalid plot type. Must be 'function', 'wireframe', or 'point_cloud'.")
@@ -1164,6 +1170,8 @@ class Function:
             else:
                 pf.show_plot(plotting_elements, title="Volume", axes=1, interactive=True)
         return plotting_elements
+    
+    def generate_triangulation(): pass
 
     def __add__(self, other:Function) -> Function:
         return lfs.operations.add(self, other)

@@ -12,7 +12,7 @@ keywords = ["CADDEE", "auto-differentation", "functions", "optimization", "B-spl
 authors = [{name = "Andrew Fletcher", email = "afletcher168@gmail.com"}]
 dependencies = [
     'numpy',
-    'vedo',
+    'pyvista',
     'joblib',
     'pandas',
     'scipy',
