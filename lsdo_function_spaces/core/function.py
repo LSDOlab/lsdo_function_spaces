@@ -998,6 +998,8 @@ class Function:
             parametric_coordinates = np.hstack(parametric_coordinates_tuple)
             
             function_values = self.evaluate(parametric_coordinates, non_csdl=True).reshape((num_points,num_points,-1))
+            if isinstance(function_values, csdl.Variable):
+                function_values = function_values.value
             points = function_values
 
             if isinstance(color, Function):
