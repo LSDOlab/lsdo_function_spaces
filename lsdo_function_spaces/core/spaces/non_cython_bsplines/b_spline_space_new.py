@@ -112,6 +112,9 @@ class BSplineSpaceNew(LinearFunctionSpace):
 
         if isinstance(coefficients, np.ndarray):
             coefficients = csdl.Variable(value=coefficients)
+            non_csdl = True
+        else:
+            non_csdl = False
 
         if isinstance(parametric_coordinates, np.ndarray):
             basis_matrix = compute_basis_matrix_numpy(
@@ -131,6 +134,8 @@ class BSplineSpaceNew(LinearFunctionSpace):
             
             values = values.reshape((parametric_coordinates.shape[0], coefficients.shape[-1]))
 
+            if non_csdl:
+                values = values.value
             return values
 
         else:
@@ -145,7 +150,8 @@ class BSplineSpaceNew(LinearFunctionSpace):
                 parametric_coordinates=parametric_coordinates,
                 coefficients=coefficients,
             )
-
+            if non_csdl:
+                values = values.value
             return values
 
     def _generate_parametric_grid(self, knot_vectors, N):

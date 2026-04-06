@@ -526,7 +526,7 @@ class Function:
                     # NOTE on indices: i=points, j=coefficients, k=physical dimensions
 
                 for m in range(self.space.num_parametric_dimensions):
-                    parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,))
+                    parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,), dtype=int)
                     if m == k:
                         parametric_derivative_orders[m] = 2
                     else:
