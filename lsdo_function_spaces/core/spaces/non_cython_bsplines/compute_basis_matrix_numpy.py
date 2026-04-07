@@ -80,6 +80,8 @@ def compute_basis_matrix_numpy(us, degrees, knot_vectors, der_orders=None):
         for r in range(p+1):
             a[0, :, 0] = 1.0
             for k in range(1, n+1):
+                if k > p:
+                    break  # No derivatives beyond degree
                 d   = np.zeros(M)
                 rk  = r - k
                 pk  = p - k
