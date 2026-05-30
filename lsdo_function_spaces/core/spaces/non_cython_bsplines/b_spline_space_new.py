@@ -117,6 +117,9 @@ class BSplineSpaceNew(LinearFunctionSpace):
             non_csdl = False
 
         if isinstance(parametric_coordinates, np.ndarray):
+            # print("degree:", self.degree)
+            # print("knots:", self.knots)
+            # print("derivative orders:", parametric_derivative_orders)
             basis_matrix = compute_basis_matrix_numpy(
                 us=parametric_coordinates,
                 degrees=self.degree,
@@ -136,6 +139,8 @@ class BSplineSpaceNew(LinearFunctionSpace):
 
             if non_csdl:
                 values = values.value
+                if values.shape[0] == 1:
+                    values = values.flatten()
             return values
 
         else:
@@ -150,8 +155,10 @@ class BSplineSpaceNew(LinearFunctionSpace):
                 parametric_coordinates=parametric_coordinates,
                 coefficients=coefficients,
             )
+
             if non_csdl:
                 values = values.value
+
             return values
 
     def _generate_parametric_grid(self, knot_vectors, N):
@@ -374,8 +381,7 @@ class BSplineSpaceNew(LinearFunctionSpace):
                 f"parametric_coordinates must be a numpy array or a CSDL variable, "
                 f"but got type {type(parametric_coordinates)}."
             )
-        
-    
+
     def _compute_distance_bounds(self, point:np.ndarray, function:lfs.Function, direction=None) -> float:
         '''
         Computes the distance bounds for the given point.
@@ -407,7 +413,6 @@ class BSplineSpaceNew(LinearFunctionSpace):
             t = np.dot(direction, (closest_point - point)) / np.dot(direction, direction)
             closest_point_on_line = point + t * direction
             return np.linalg.norm(closest_point_on_line - closest_point)
-        
 
 if __name__ == "__main__":
     np.random.seed(42)  # For reproducibility
@@ -513,6 +518,5 @@ if __name__ == "__main__":
         recorder=recorder,
     )
     jax_sim.check_optimization_derivatives(step_size=epsilon)
-
 
 

@@ -80,7 +80,9 @@ def create_b_spline_from_corners(corners:np.ndarray, degree:tuple=(3,), num_coef
         dimension_hyper_volumes = np.moveaxis(linspace_index_front, 0, dimension_index)
         previous_dimension_hyper_volume = dimension_hyper_volumes.copy()
 
-    b_spline_space = lfs.BSplineSpace(num_parametric_dimensions=num_dimensions, degree=degree, 
+    # b_spline_space = lfs.BSplineSpace(num_parametric_dimensions=num_dimensions, degree=degree, 
+    #                               coefficients_shape=dimension_hyper_volumes.shape[:-1], knots=knot_vectors)
+    b_spline_space = lfs.BSplineSpaceNew(num_parametric_dimensions=num_dimensions, degree=degree, 
                                   coefficients_shape=dimension_hyper_volumes.shape[:-1], knots=knot_vectors)
     b_spline = lfs.Function(space=b_spline_space, coefficients=dimension_hyper_volumes, name=name)
 
