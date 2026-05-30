@@ -9,7 +9,7 @@ from .core.function_space import FunctionSpace, LinearFunctionSpace
 
 # spaces
 from .core.function_set_space import FunctionSetSpace
-from .core.spaces.b_spline_space import BSplineSpace
+# from .core.spaces.b_spline_space import BSplineSpace
 from .core.spaces.non_cython_bsplines.b_spline_space_new import BSplineSpaceNew
 from .core.spaces.polynomial_space import PolynomialSpace
 from .core.spaces.conditional_space import ConditionalSpace
