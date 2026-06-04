@@ -125,8 +125,12 @@ class Function:
 
         if non_csdl:
             values : npt.NDArray[np.float64] = self.space._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
+            if values.shape[-1] == 1:
+                values = values.flatten()
         else:
             values : csdl.Variable = self.space._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
+            if values.shape[-1] == 1:
+                values = values.reshape((-1,))
 
         if plot:
             # Plot the function

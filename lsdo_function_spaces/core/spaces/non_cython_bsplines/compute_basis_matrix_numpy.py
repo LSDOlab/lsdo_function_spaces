@@ -72,6 +72,7 @@ def compute_basis_matrix_numpy(us, degrees, knot_vectors, der_orders=None):
             ndu[:, j, j] = saved
 
         # 3) allocate ders array and load zero-th derivatives
+        # print("M:", M, "n:", n, "p:", p)
         ders = np.zeros((M, n+1, p+1))
         ders[:, 0, :] = ndu[:, :, p]
 
