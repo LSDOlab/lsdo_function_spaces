@@ -27,6 +27,11 @@ def compute_basis_matrix_numpy(us, degrees, knot_vectors, der_orders=None):
 
     if der_orders is None:
         der_orders = [0] * dim
+    elif len(der_orders) != dim:
+        if len(der_orders) == 1:
+            der_orders = der_orders * dim
+        else:
+            raise ValueError("der_orders must be either a single int or a tuple of ints with length equal to the number of dimensions.")
 
     # 1) find spans for all us
     #    span m satisfies U[i] ≤ u_m < U[i+1]

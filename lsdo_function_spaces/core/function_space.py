@@ -65,7 +65,7 @@ class FunctionSpace:
         for dimension_index in range(self.num_parametric_dimensions):
             mesh_grid_input.append(np.linspace(0., 1., grid_resolution[dimension_index]))
 
-        parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
+        parametric_coordinates_tuple = list(np.meshgrid(*mesh_grid_input, indexing='ij'))
         for dimensions_index in range(self.num_parametric_dimensions):
             parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
 

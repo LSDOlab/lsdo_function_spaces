@@ -55,7 +55,7 @@ class Function:
         '''
         Returns a copy of the function.
         '''
-        return lfs.Function(space=self.space, coefficients=self.coefficients, name=self.name)
+        return lfs.Function(space=self.space, coefficients=self.coefficients*1., name=self.name)
 
     def get_matrix_vector(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
                  non_csdl:bool=False):
@@ -237,7 +237,7 @@ class Function:
             for dimension_index in range(self.space.num_parametric_dimensions):
                 mesh_grid_input.append(np.linspace(0., 1., grid_resolution[dimension_index]))
 
-            parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
+            parametric_coordinates_tuple = list(np.meshgrid(*mesh_grid_input, indexing='ij'))
             for dimensions_index in range(self.space.num_parametric_dimensions):
                 parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
 
@@ -559,7 +559,7 @@ class Function:
                     - np.einsum('i,ikm->ikm', direction_dot_displacement, direction_dot_d2_displacement_d_parametric2)
                 )
 
-            # Remove dof that are on constrant boundary and want to leave (active subspace method)
+            # Remove dof that are on constrant boundary and want to leave (active set method)
             coordinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
             coordinates_to_remove_on_upper_boundary = np.logical_and(current_guess[points_left_to_converge] == 1, gradient < 0)
             coordinates_to_from_zero_hessian_column = np.where(~hessian.any(axis=1))[0] # Axis is 1 because we want to remove the column
@@ -988,7 +988,8 @@ class Function:
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 100            # Generate meshgrid of parametric coordinates
+            # num_points = 100            # Generate meshgrid of parametric coordinates
+            num_points = 50            # Generate meshgrid of parametric coordinates
             mesh_grid_input = []
             for dimension_index in range(self.space.num_parametric_dimensions):
                 mesh_grid_input.append(np.linspace(0., 1., num_points))
