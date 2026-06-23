@@ -17,8 +17,8 @@ dependencies = [
     'pandas',
     'scipy',
     'scikit-learn',
-    'csdl_alpha @ git+https://github.com/LSDOlab/CSDL_alpha.git',
-    'lsdo_b_splines_cython @ git+https://github.com/LSDOlab/lsdo_b_splines_cython.git'
+    #'csdl_alpha @ git+https://github.com/LSDOlab/CSDL_alpha.git',
+    #'lsdo_b_splines_cython @ git+https://github.com/LSDOlab/lsdo_b_splines_cython.git'
 ]
 dynamic = ['version']
 
