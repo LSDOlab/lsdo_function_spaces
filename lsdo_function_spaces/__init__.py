@@ -11,7 +11,7 @@ from .core.function_space import FunctionSpace, LinearFunctionSpace
 from .core.function_set_space import FunctionSetSpace
 # from .core.spaces.b_spline_space import BSplineSpace
 from .core.spaces.non_cython_bsplines.b_spline_space_new import BSplineSpaceNew
-from .core.spaces.non_cython_bsplines.b_spline_space_new import BSplineSpace
+from .core.spaces.non_cython_bsplines.b_spline_space_new import BSplineSpaceNew as BSplineSpace
 from .core.spaces.polynomial_space import PolynomialSpace
 from .core.spaces.conditional_space import ConditionalSpace
 from .core.spaces.idw_space import IDWFunctionSpace
