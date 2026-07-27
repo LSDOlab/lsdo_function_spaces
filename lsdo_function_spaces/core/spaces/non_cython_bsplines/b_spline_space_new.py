@@ -111,7 +111,7 @@ class BSplineSpaceNew(LinearFunctionSpace):
             )
 
         if isinstance(coefficients, np.ndarray):
-            coefficients = csdl.Variable(value=coefficients)
+            # coefficients = csdl.Variable(value=coefficients)
             non_csdl = True
         else:
             non_csdl = False
@@ -130,17 +130,23 @@ class BSplineSpaceNew(LinearFunctionSpace):
                 coefficients = coefficients.reshape(
                     (basis_matrix.shape[1], coefficients.size//basis_matrix.shape[1])
                 )
-            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients.shape[1])))
-            for i in csdl.frange(coefficients.shape[1]):
-                coefficients_column = coefficients[:,i].reshape((coefficients.shape[0], 1))
-                values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
-            
-            values = values.reshape((parametric_coordinates.shape[0], coefficients.shape[-1]))
 
             if non_csdl:
-                values = values.value
+                values = basis_matrix @ coefficients
                 if values.shape[0] == 1:
                     values = values.flatten()
+            else:
+                values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients.shape[1])))
+                for i in csdl.frange(coefficients.shape[1]):
+                    coefficients_column = coefficients[:,i].reshape((coefficients.shape[0], 1))
+                    values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
+                
+                values = values.reshape((parametric_coordinates.shape[0], coefficients.shape[-1]))
+
+            # if non_csdl:
+            #     values = values.value
+            #     if values.shape[0] == 1:
+            #         values = values.flatten()
             return values
 
         else:
