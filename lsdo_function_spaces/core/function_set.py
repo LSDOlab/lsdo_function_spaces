@@ -68,7 +68,8 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
         param_coords = function.project(points, direction=direction_opt, grid_search_density_parameter=options.get('grid_search_density_parameter', 1),
                                         max_newton_iterations=options.get('max_newton_iterations', 100), newton_tolerance=options.get('newton_tolerance', 1e-6),
                                         projection_tolerance=projection_tolerance, grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
-                                        grid_search_subtraction_cutoff=grid_search_subtraction_cutoff, do_pickles=False)
+                                        grid_search_subtraction_cutoff=grid_search_subtraction_cutoff, do_pickles=False,
+                                        use_line_search=options.get('use_line_search', False))
 
         func_vals = function.evaluate(param_coords, coefficients=function.coefficients.value, non_csdl=True)
         if direction is None:
@@ -470,7 +471,7 @@ class FunctionSet:
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=None, plot:bool=False,
                 extrema=False, force_reprojection=False, priority_inds:Optional[list[int]]=None, priority_eps:float=1e-3,
                 grid_search_evaluation_cutoff:Optional[float]=None, grid_search_subtraction_cutoff:Optional[float]=None,
-                grid_search_density_cutoff:int=50, do_pickles:bool=True) -> list[tuple[int, npt.NDArray[np.float64]]]:
+                grid_search_density_cutoff:int=50, do_pickles:bool=True, use_line_search:bool=False) -> list[tuple[int, npt.NDArray[np.float64]]]:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -515,6 +516,8 @@ class FunctionSet:
             The cutoff for the grid search density parameter. If the grid search density parameter exceeds this value during refinement,
               the projection will be stopped.
             This is to prevent the projection from taking too long. If the projection is stopped, a warning will be printed.
+                use_line_search : bool = False
+                        If True, use Armijo backtracking for each Newton step of the underlying functions.
         '''
         if num_workers is None:
             num_workers = lfs.num_workers
@@ -557,7 +560,8 @@ class FunctionSet:
                    'projection_tolerance': None, 'extrema': extrema,
                    'priority_inds': priority_inds, 'priority_eps': priority_eps,
                    'grid_search_evaluation_cutoff': grid_search_evaluation_cutoff,
-                   'grid_search_subtraction_cutoff': grid_search_subtraction_cutoff}
+                   'grid_search_subtraction_cutoff': grid_search_subtraction_cutoff,
+                   'use_line_search': use_line_search}
         
 
 

@@ -10,6 +10,7 @@ import pickle
 from pathlib import Path
 import string
 import random
+from time import perf_counter
 from typing import Union, Optional, Sequence
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
@@ -270,7 +271,8 @@ class Function:
                 max_newton_iterations:int=100, newton_tolerance:float=1e-12, projection_tolerance:float=None,
                 plot:bool=False, force_reproject:bool=False, 
                 grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                do_pickles=True, grid_search_density_cutoff=50) -> csdl.Variable:
+                do_pickles=True, grid_search_density_cutoff=50, verbose:bool=False,
+                use_line_search:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -312,6 +314,8 @@ class Function:
         grid_search_density_cutoff : int = 50
             The cutoff for the grid search density during refinement. If the grid search density is greater than this, the refinement will be
             terminated and a warning will be printed.
+        use_line_search : bool = False
+            If True, use Armijo backtracking for each Newton step. If False, apply the stabilized Newton step directly.
         '''
         if isinstance(points, csdl.Variable):
             points = points.value
@@ -330,7 +334,8 @@ class Function:
                                                                     grid_search_density_parameter, max_newton_iterations,
                                                                     newton_tolerance, projection_tolerance, 
                                                                     grid_search_evaluation_cutoff, grid_search_subtraction_cutoff,
-                                                                    do_pickles=do_pickles, grid_search_density_cutoff=grid_search_density_cutoff)
+                                                                    do_pickles=do_pickles, grid_search_density_cutoff=grid_search_density_cutoff,
+                                                                    use_line_search=use_line_search)
 
                 if plot:
                     projection_results = self.evaluate(parametric_coordinates).value
@@ -367,6 +372,8 @@ class Function:
             # cutoff_size = 1.5e7
             # cutoff_size = 1.e7
             # cutoff_size = 5.e6
+            if verbose:
+                print('grid search evaluation size: ', num_grid_points)
             if grid_search_evaluation_cutoff is not None and num_grid_points > grid_search_evaluation_cutoff:
                 num_sections = int(np.ceil(num_grid_points/grid_search_evaluation_cutoff))
                 section_size = int(np.ceil(num_grid_points/num_sections))
@@ -390,6 +397,9 @@ class Function:
         # cutoff_size = 1.e8
         # cutoff_size = 1.5e8
         # cutoff_size = 2.5e8
+        if verbose:
+            print('grid search subtraction size: ', expanded_points_size)
+        grid_search_start_time = perf_counter()
         if grid_search_subtraction_cutoff is not None and expanded_points_size > grid_search_subtraction_cutoff:
             # grid search sections of points at a time
             num_sections = int(np.ceil(expanded_points_size/grid_search_subtraction_cutoff))
@@ -412,7 +422,6 @@ class Function:
                     grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
                     grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
                     closest_point_indices[start_index:end_index] = np.argmin(grid_search_distances_from_axis_squared, axis=1)
-            
         else:
             points_expanded = np.repeat(points[:,np.newaxis,:], grid_search_values.shape[0], axis=1)
             grid_search_displacements = grid_search_values - points_expanded
@@ -435,6 +444,10 @@ class Function:
                 grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
                 grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
                 closest_point_indices = np.argmin(grid_search_distances_from_axis_squared, axis=1)
+
+        grid_search_time = perf_counter() - grid_search_start_time
+        if verbose:
+            print(f'grid search time: {grid_search_time:.6f} s')
 
         # Use the parametric coordinate corresponding to each closest point as the initial guess for the Newton iterations
         initial_guess = parametric_grid_search[closest_point_indices]
@@ -509,6 +522,9 @@ class Function:
         # Experimental implementation that does all the Newton optimizations at once to vectorize many of the computations
         current_guess = initial_guess.copy()
         points_left_to_converge = np.arange(points.shape[0])
+        newton_start_time = perf_counter()
+        total_line_search_iterations = 0
+        max_line_search_iterations = 0
         for j in range(max_newton_iterations):
             # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
             function_values = self.evaluate(parametric_coordinates=current_guess[points_left_to_converge], coefficients=self.coefficients.value, non_csdl=True)
@@ -563,6 +579,12 @@ class Function:
                     - np.einsum('i,ikm->ikm', direction_dot_displacement, direction_dot_d2_displacement_d_parametric2)
                 )
 
+            if direction is None:
+                current_objective_values = np.einsum('ij,ij->i', displacements, displacements)
+            else:
+                current_objective_values = ((1 + rho) * np.einsum('ij,ij->i', displacements, displacements)
+                                            - direction_dot_displacement**2)
+
             # Remove dof that are on constrant boundary and want to leave (active set method)
             coordinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
             coordinates_to_remove_on_upper_boundary = np.logical_and(current_guess[points_left_to_converge] == 1, gradient < 0)
@@ -577,6 +599,7 @@ class Function:
 
             reduced_gradients = []
             reduced_hessians = []
+            reduced_objective_values = []
             total_gradient_norm = 0.
             counter = 0
             for i in range(points_left_to_converge.shape[0]):
@@ -584,6 +607,7 @@ class Function:
 
                 if np.linalg.norm(reduced_gradient) < newton_tolerance:
                     points_left_to_converge = np.delete(points_left_to_converge, counter)
+                    current_objective_values = np.delete(current_objective_values, counter)
                     del indices_to_keep[counter]
                     continue
 
@@ -592,6 +616,7 @@ class Function:
 
                 reduced_gradients.append(reduced_gradient)
                 reduced_hessians.append(reduced_hessian)
+                reduced_objective_values.append(current_objective_values[counter])
                 total_gradient_norm += np.linalg.norm(reduced_gradient)
                 counter += 1
 
@@ -601,19 +626,79 @@ class Function:
 
             # Solve the linear systems
             for i, index in enumerate(points_left_to_converge):
-                delta = np.linalg.solve(reduced_hessians[i], -reduced_gradients[i])
+                # delta = np.linalg.solve(reduced_hessians[i], -reduced_gradients[i])
+
+                reduced_hessian = 0.5 * (reduced_hessians[i] + reduced_hessians[i].T)
+                eigenvalues, eigenvectors = np.linalg.eigh(reduced_hessian)
+                flipped_eigenvalues = np.maximum(np.abs(eigenvalues), 1e-12)
+                stabilized_inverse = eigenvectors @ np.diag(1.0 / flipped_eigenvalues) @ eigenvectors.T
+                delta = stabilized_inverse @ (-reduced_gradients[i])
+
+                if not use_line_search:
+                    current_guess[index, indices_to_keep[i]] += delta
+                    continue
+
+                step_size = 1.0
+                armijo_c1 = 1e-4
+                backtracking_contraction = 0.9
+                min_step_size = 1e-8
+                current_objective = reduced_objective_values[i]
+                directional_derivative = reduced_gradients[i].dot(delta)
+
+                accepted_step = None
+                trial_guess = current_guess[index].copy()
+                line_search_iterations = 0
+                for _ in range(50):
+                    line_search_iterations += 1
+                    trial_guess[:] = current_guess[index]
+                    trial_guess[indices_to_keep[i]] += step_size * delta
+                    trial_guess = np.clip(trial_guess, 0., 1.)
+
+                    trial_function_value = self.evaluate(
+                        parametric_coordinates=trial_guess.reshape(1, -1),
+                        coefficients=self.coefficients.value,
+                        non_csdl=True,
+                    ).reshape(num_physical_dimensions)
+                    trial_displacement = points[index] - trial_function_value
+
+                    if direction is None:
+                        trial_objective = trial_displacement.dot(trial_displacement)
+                    else:
+                        trial_objective = ((1 + rho) * trial_displacement.dot(trial_displacement)
+                                           - (direction.dot(trial_displacement))**2)
+
+                    if trial_objective <= current_objective + armijo_c1 * step_size * directional_derivative:
+                        total_line_search_iterations += line_search_iterations
+                        max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                        accepted_step = trial_guess.copy()
+                        break
+
+                    step_size *= backtracking_contraction
+                    if step_size < min_step_size:
+                        total_line_search_iterations += line_search_iterations
+                        max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                        accepted_step = trial_guess.copy()
+                        break
+
+                if accepted_step is None:
+                    accepted_step = trial_guess.copy()
 
                 # Update the initial guess
-                current_guess[index, indices_to_keep[i]] += delta
+                current_guess[index] = accepted_step
 
             # If any of the coordinates are outside the bounds, set them to the bounds
             current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
+
+        newton_time = perf_counter() - newton_start_time
+        if verbose:
+            print(f'newton time: {newton_time:.6f} s')
+            print(f'line search iterations total: {total_line_search_iterations}, max per point: {max_line_search_iterations}')
 
         if projection_tolerance is not None:
             current_guess = self.refine_projection(points, current_guess, direction,
                                                             grid_search_density_parameter, max_newton_iterations,
                                                             newton_tolerance, projection_tolerance=projection_tolerance, 
-                                                            do_pickles=False)
+                                                            do_pickles=False, use_line_search=use_line_search)
 
         if plot:
             projection_results = self.evaluate(current_guess).value
@@ -643,7 +728,7 @@ class Function:
     def refine_projection(self, points:np.ndarray, parametric_coordinates:np.ndarray, direction:np.ndarray, initial_grid_search_density_parameter:int=1,
                           max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=1e-6,
                           grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                          do_pickles=True, grid_search_density_cutoff=50) -> np.ndarray:
+                          do_pickles=True, grid_search_density_cutoff=50, use_line_search:bool=False) -> np.ndarray:
         '''
         For projections where the points are in the geometry, this method finds the points that are not within the tolerance distance and reprojects
         those points using a finer grid search density parameter.
@@ -669,7 +754,8 @@ class Function:
                 new_parametric_coordinates = self.project(points_flattened[points_to_reproject], direction, grid_search_density_parameter=grid_search_density_parameter,
                                                           max_newton_iterations=max_newton_iterations, newton_tolerance=newton_tolerance, force_reproject=False,
                                                           grid_search_evaluation_cutoff=grid_search_evaluation_cutoff, 
-                                                          grid_search_subtraction_cutoff=grid_search_subtraction_cutoff)
+                                                          grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,
+                                                          use_line_search=use_line_search)
                 parametric_coordinates[points_to_reproject] = new_parametric_coordinates
                 new_projection_results = self.evaluate(parametric_coordinates=new_parametric_coordinates, non_csdl=True)
                 
@@ -992,6 +1078,9 @@ class Function:
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
+            # num_points = 1000            # Generate meshgrid of parametric coordinates
+            # num_points = 500            # Generate meshgrid of parametric coordinates
+            # num_points = 200            # Generate meshgrid of parametric coordinates
             # num_points = 100            # Generate meshgrid of parametric coordinates
             num_points = 50            # Generate meshgrid of parametric coordinates
             mesh_grid_input = []
