@@ -7,34 +7,14 @@ recorder = csdl.Recorder(inline=True)
 recorder.start()
 
 file_path = 'examples/import_files_for_examples/'
+# file_name = 'lift_plus_cruise_fuse_wing_tail.stp'
 file_name = 'rectangular_wing.stp'
-wing = lfs.import_file(file_path + file_name, parallelize=False)
-
-# Plot the wing
-wing.plot()
-
-fs = lfs.RBFFunctionSpace(num_parametric_dimensions=2, radial_function='polyharmonic_spline', grid_size=(20,20))
-
-wing_up = ops.concatenate((ops.minimum(wing), ops.maximum(wing), ops.average(wing)))
-wing_up.plot()
-
+wing = lfs.import_file_patched(file_path + file_name, parallelize=False)
+wing_ctrl_pts = []
+for fun_ind, fun in wing.functions.items():
+    wing_ctrl_pts.append(fun.coefficients.value.reshape(-1, 3))
+wing_ctrl_pts = np.vstack(wing_ctrl_pts)
+ctrl_pt_plot = lfs.plot_points(wing_ctrl_pts, color='red',show=False)
+wing.plot(additional_plotting_elements=[ctrl_pt_plot], opacity=0.7)
+print("We are using New BSpline Space", isinstance(wing.functions[0].space, lfs.BSplineSpaceNew))
 exit()
-
-
-# left_wing = wing.create_subset(function_search_names=[', 0'])
-# left_wing.plot()
-
-# left_wing.functions[3].coefficients += 1.
-# left_wing.plot()
-
-plotting_elements = wing.plot(show=False)
-wing.plot(point_types=['coefficients'], plot_types=['point_cloud'], color='#C69214', additional_plotting_elements=plotting_elements)
-
-
-# wing.project(np.array([0., 0., 0.]))
-new_function_space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1,3), coefficients_shape=(10,30))
-new_function_spaces = [new_function_space]*len(wing.functions)
-new_wing = wing.refit(new_function_spaces=new_function_spaces, grid_resolution=(30,100))
-plotting_elements = new_wing.plot(show=False)
-new_wing.plot(point_types=['coefficients'], plot_types=['point_cloud'], color='#C69214', additional_plotting_elements=plotting_elements)
-print('hi')

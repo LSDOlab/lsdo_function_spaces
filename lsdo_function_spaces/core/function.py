@@ -10,11 +10,11 @@ import pickle
 from pathlib import Path
 import string
 import random
+from time import perf_counter
 from typing import Union, Optional, Sequence
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
-import vedo
 from lsdo_function_spaces.utils.internal_utilities import get_projection_squared_distances
 
 
@@ -38,6 +38,7 @@ class Function:
         self.space = space
         self.coefficients = coefficients
         self.name = name
+        self.triangulation = None
 
         if not isinstance(self.coefficients, csdl.Variable):
             self.coefficients = csdl.Variable(value=self.coefficients)
@@ -55,7 +56,7 @@ class Function:
         '''
         Returns a copy of the function.
         '''
-        return lfs.Function(space=self.space, coefficients=self.coefficients, name=self.name)
+        return lfs.Function(space=self.space, coefficients=self.coefficients*1., name=self.name)
 
     def get_matrix_vector(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
                  non_csdl:bool=False):
@@ -125,8 +126,12 @@ class Function:
 
         if non_csdl:
             values : npt.NDArray[np.float64] = self.space._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
+            if values.shape[-1] == 1:
+                values = values.flatten()
         else:
             values : csdl.Variable = self.space._evaluate(coefficients, parametric_coordinates, parametric_derivative_orders)
+            if values.shape[-1] == 1:
+                values = values.reshape((-1,))
 
         if plot:
             # Plot the function
@@ -237,7 +242,7 @@ class Function:
             for dimension_index in range(self.space.num_parametric_dimensions):
                 mesh_grid_input.append(np.linspace(0., 1., grid_resolution[dimension_index]))
 
-            parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
+            parametric_coordinates_tuple = list(np.meshgrid(*mesh_grid_input, indexing='ij'))
             for dimensions_index in range(self.space.num_parametric_dimensions):
                 parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
 
@@ -266,7 +271,8 @@ class Function:
                 max_newton_iterations:int=100, newton_tolerance:float=1e-12, projection_tolerance:float=None,
                 plot:bool=False, force_reproject:bool=False, 
                 grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                do_pickles=True, grid_search_density_cutoff=50) -> csdl.Variable:
+                do_pickles=True, grid_search_density_cutoff=50, verbose:bool=False,
+                use_line_search:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -308,6 +314,8 @@ class Function:
         grid_search_density_cutoff : int = 50
             The cutoff for the grid search density during refinement. If the grid search density is greater than this, the refinement will be
             terminated and a warning will be printed.
+        use_line_search : bool = False
+            If True, use Armijo backtracking for each Newton step. If False, apply the stabilized Newton step directly.
         '''
         if isinstance(points, csdl.Variable):
             points = points.value
@@ -326,13 +334,15 @@ class Function:
                                                                     grid_search_density_parameter, max_newton_iterations,
                                                                     newton_tolerance, projection_tolerance, 
                                                                     grid_search_evaluation_cutoff, grid_search_subtraction_cutoff,
-                                                                    do_pickles=do_pickles, grid_search_density_cutoff=grid_search_density_cutoff)
+                                                                    do_pickles=do_pickles, grid_search_density_cutoff=grid_search_density_cutoff,
+                                                                    use_line_search=use_line_search)
 
                 if plot:
                     projection_results = self.evaluate(parametric_coordinates).value
                     plotting_elements = []
-                    plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
-                    plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
+                    plotting_elements = lfs.plot_points(points, color='#00629B', size=10, show=False)
+                    plotting_elements = lfs.plot_points(projection_results, color='#C69214', size=10, show=False,
+                                                        additional_plotting_elements=plotting_elements)
                     self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
                 return parametric_coordinates
             else:
@@ -362,6 +372,8 @@ class Function:
             # cutoff_size = 1.5e7
             # cutoff_size = 1.e7
             # cutoff_size = 5.e6
+            if verbose:
+                print('grid search evaluation size: ', num_grid_points)
             if grid_search_evaluation_cutoff is not None and num_grid_points > grid_search_evaluation_cutoff:
                 num_sections = int(np.ceil(num_grid_points/grid_search_evaluation_cutoff))
                 section_size = int(np.ceil(num_grid_points/num_sections))
@@ -385,6 +397,9 @@ class Function:
         # cutoff_size = 1.e8
         # cutoff_size = 1.5e8
         # cutoff_size = 2.5e8
+        if verbose:
+            print('grid search subtraction size: ', expanded_points_size)
+        grid_search_start_time = perf_counter()
         if grid_search_subtraction_cutoff is not None and expanded_points_size > grid_search_subtraction_cutoff:
             # grid search sections of points at a time
             num_sections = int(np.ceil(expanded_points_size/grid_search_subtraction_cutoff))
@@ -407,7 +422,6 @@ class Function:
                     grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
                     grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
                     closest_point_indices[start_index:end_index] = np.argmin(grid_search_distances_from_axis_squared, axis=1)
-            
         else:
             points_expanded = np.repeat(points[:,np.newaxis,:], grid_search_values.shape[0], axis=1)
             grid_search_displacements = grid_search_values - points_expanded
@@ -430,6 +444,10 @@ class Function:
                 grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
                 grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
                 closest_point_indices = np.argmin(grid_search_distances_from_axis_squared, axis=1)
+
+        grid_search_time = perf_counter() - grid_search_start_time
+        if verbose:
+            print(f'grid search time: {grid_search_time:.6f} s')
 
         # Use the parametric coordinate corresponding to each closest point as the initial guess for the Newton iterations
         initial_guess = parametric_grid_search[closest_point_indices]
@@ -504,6 +522,9 @@ class Function:
         # Experimental implementation that does all the Newton optimizations at once to vectorize many of the computations
         current_guess = initial_guess.copy()
         points_left_to_converge = np.arange(points.shape[0])
+        newton_start_time = perf_counter()
+        total_line_search_iterations = 0
+        max_line_search_iterations = 0
         for j in range(max_newton_iterations):
             # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
             function_values = self.evaluate(parametric_coordinates=current_guess[points_left_to_converge], coefficients=self.coefficients.value, non_csdl=True)
@@ -525,7 +546,7 @@ class Function:
                     # NOTE on indices: i=points, j=coefficients, k=physical dimensions
 
                 for m in range(self.space.num_parametric_dimensions):
-                    parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,))
+                    parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,), dtype=int)
                     if m == k:
                         parametric_derivative_orders[m] = 2
                     else:
@@ -558,7 +579,13 @@ class Function:
                     - np.einsum('i,ikm->ikm', direction_dot_displacement, direction_dot_d2_displacement_d_parametric2)
                 )
 
-            # Remove dof that are on constrant boundary and want to leave (active subspace method)
+            if direction is None:
+                current_objective_values = np.einsum('ij,ij->i', displacements, displacements)
+            else:
+                current_objective_values = ((1 + rho) * np.einsum('ij,ij->i', displacements, displacements)
+                                            - direction_dot_displacement**2)
+
+            # Remove dof that are on constrant boundary and want to leave (active set method)
             coordinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
             coordinates_to_remove_on_upper_boundary = np.logical_and(current_guess[points_left_to_converge] == 1, gradient < 0)
             coordinates_to_from_zero_hessian_column = np.where(~hessian.any(axis=1))[0] # Axis is 1 because we want to remove the column
@@ -572,6 +599,7 @@ class Function:
 
             reduced_gradients = []
             reduced_hessians = []
+            reduced_objective_values = []
             total_gradient_norm = 0.
             counter = 0
             for i in range(points_left_to_converge.shape[0]):
@@ -579,6 +607,7 @@ class Function:
 
                 if np.linalg.norm(reduced_gradient) < newton_tolerance:
                     points_left_to_converge = np.delete(points_left_to_converge, counter)
+                    current_objective_values = np.delete(current_objective_values, counter)
                     del indices_to_keep[counter]
                     continue
 
@@ -587,6 +616,7 @@ class Function:
 
                 reduced_gradients.append(reduced_gradient)
                 reduced_hessians.append(reduced_hessian)
+                reduced_objective_values.append(current_objective_values[counter])
                 total_gradient_norm += np.linalg.norm(reduced_gradient)
                 counter += 1
 
@@ -596,28 +626,88 @@ class Function:
 
             # Solve the linear systems
             for i, index in enumerate(points_left_to_converge):
-                delta = np.linalg.solve(reduced_hessians[i], -reduced_gradients[i])
+                # delta = np.linalg.solve(reduced_hessians[i], -reduced_gradients[i])
+
+                reduced_hessian = 0.5 * (reduced_hessians[i] + reduced_hessians[i].T)
+                eigenvalues, eigenvectors = np.linalg.eigh(reduced_hessian)
+                flipped_eigenvalues = np.maximum(np.abs(eigenvalues), 1e-12)
+                stabilized_inverse = eigenvectors @ np.diag(1.0 / flipped_eigenvalues) @ eigenvectors.T
+                delta = stabilized_inverse @ (-reduced_gradients[i])
+
+                if not use_line_search:
+                    current_guess[index, indices_to_keep[i]] += delta
+                    continue
+
+                step_size = 1.0
+                armijo_c1 = 1e-4
+                backtracking_contraction = 0.9
+                min_step_size = 1e-8
+                current_objective = reduced_objective_values[i]
+                directional_derivative = reduced_gradients[i].dot(delta)
+
+                accepted_step = None
+                trial_guess = current_guess[index].copy()
+                line_search_iterations = 0
+                for _ in range(50):
+                    line_search_iterations += 1
+                    trial_guess[:] = current_guess[index]
+                    trial_guess[indices_to_keep[i]] += step_size * delta
+                    trial_guess = np.clip(trial_guess, 0., 1.)
+
+                    trial_function_value = self.evaluate(
+                        parametric_coordinates=trial_guess.reshape(1, -1),
+                        coefficients=self.coefficients.value,
+                        non_csdl=True,
+                    ).reshape(num_physical_dimensions)
+                    trial_displacement = points[index] - trial_function_value
+
+                    if direction is None:
+                        trial_objective = trial_displacement.dot(trial_displacement)
+                    else:
+                        trial_objective = ((1 + rho) * trial_displacement.dot(trial_displacement)
+                                           - (direction.dot(trial_displacement))**2)
+
+                    if trial_objective <= current_objective + armijo_c1 * step_size * directional_derivative:
+                        total_line_search_iterations += line_search_iterations
+                        max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                        accepted_step = trial_guess.copy()
+                        break
+
+                    step_size *= backtracking_contraction
+                    if step_size < min_step_size:
+                        total_line_search_iterations += line_search_iterations
+                        max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                        accepted_step = trial_guess.copy()
+                        break
+
+                if accepted_step is None:
+                    accepted_step = trial_guess.copy()
 
                 # Update the initial guess
-                current_guess[index, indices_to_keep[i]] += delta
+                current_guess[index] = accepted_step
 
             # If any of the coordinates are outside the bounds, set them to the bounds
             current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
 
+        newton_time = perf_counter() - newton_start_time
+        if verbose:
+            print(f'newton time: {newton_time:.6f} s')
+            print(f'line search iterations total: {total_line_search_iterations}, max per point: {max_line_search_iterations}')
+
         if projection_tolerance is not None:
             current_guess = self.refine_projection(points, current_guess, direction,
                                                             grid_search_density_parameter, max_newton_iterations,
-                                                            newton_tolerance, projection_tolerance=projection_tolerance,
-                                                            grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
-                                                            grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,
-                                                            do_pickles=False)
+                                                            newton_tolerance, projection_tolerance=projection_tolerance, 
+                                                            do_pickles=False, use_line_search=use_line_search)
 
         if plot:
             projection_results = self.evaluate(current_guess).value
             plotting_elements = []
-            plotting_elements.append(lfs.plot_points(points, color='#00629B', size=10, show=False))
-            plotting_elements.append(lfs.plot_points(projection_results, color='#C69214', size=10, show=False))
-            self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True)
+            plotting_elements = lfs.plot_points(points, color='#00629B', size=10, show=False)
+            plotting_elements = lfs.plot_points(projection_results, color='#C69214', size=10, show=False,
+                                                additional_plotting_elements=plotting_elements)
+            # print("plotting function now")
+            self.plot(opacity=0.8, additional_plotting_elements=plotting_elements, show=True, color="#FF8400")
 
         if do_pickles:
             # Save the projection
@@ -638,7 +728,7 @@ class Function:
     def refine_projection(self, points:np.ndarray, parametric_coordinates:np.ndarray, direction:np.ndarray, initial_grid_search_density_parameter:int=1,
                           max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=1e-6,
                           grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                          do_pickles=True, grid_search_density_cutoff=50) -> np.ndarray:
+                          do_pickles=True, grid_search_density_cutoff=50, use_line_search:bool=False) -> np.ndarray:
         '''
         For projections where the points are in the geometry, this method finds the points that are not within the tolerance distance and reprojects
         those points using a finer grid search density parameter.
@@ -664,7 +754,8 @@ class Function:
                 new_parametric_coordinates = self.project(points_flattened[points_to_reproject], direction, grid_search_density_parameter=grid_search_density_parameter,
                                                           max_newton_iterations=max_newton_iterations, newton_tolerance=newton_tolerance, force_reproject=False,
                                                           grid_search_evaluation_cutoff=grid_search_evaluation_cutoff, 
-                                                          grid_search_subtraction_cutoff=grid_search_subtraction_cutoff)
+                                                          grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,
+                                                          use_line_search=use_line_search)
                 parametric_coordinates[points_to_reproject] = new_parametric_coordinates
                 new_projection_results = self.evaluate(parametric_coordinates=new_parametric_coordinates, non_csdl=True)
                 
@@ -754,7 +845,7 @@ class Function:
 
     def plot(self, point_types:list[str]=['evaluated_points'], plot_types:list[str]=['function'],
               opacity:float=1., color:str|Function='#00629B', color_map:str='jet', surface_texture:str="",
-              line_width:float=3., additional_plotting_elements:list[vedo.PointsVisual]=[], show:bool=True) -> list[vedo.PointsVisual]:
+              line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
         Plots the B-spline Surface.
 
@@ -770,23 +861,25 @@ class Function:
             The 6 digit color code to plot the B-spline as. If a function is provided, the function will be used to color the B-spline.
         surface_texture : str = "" {"metallic", "glossy", ...}, optional
             The surface texture to determine how light bounces off the surface.
-            See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+            This is kept for API compatibility.
         color_map : str = 'jet'
             The color map to use if the color is a function.
         additional_plotting_elemets : list
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            PyVista plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The PyVista plotting elements that were plotted.
         '''
+        import lsdo_function_spaces.utils.plotting_functions as pf
         if self.coefficients is None:
             raise ValueError("The coefficients of the function are not defined.")
         
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         for point_type in point_types:
             if point_type not in ['evaluated_points', 'coefficients']:
                 raise ValueError(f"Invalid point type. Must be 'evaluated_points' or 'coefficients'. Got {point_type}.")
@@ -829,7 +922,7 @@ class Function:
         return plotting_elements
 
     def plot_points(self, point_type:str='evaluated_points', opacity:float=1., color:str|lfs.Function='#00629B', color_map:str='jet', 
-                    size:float=10., additional_plotting_elements:list=[], show:bool=True) -> list[vedo.PointsVisual]:
+                    size:float=10., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
         Plots the points of the function.
 
@@ -846,14 +939,14 @@ class Function:
         size : float = 10.
             The size of the points.
         additional_plotting_elemets : list = []
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            PyVista plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool = True
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The PyVista plotting elements that were plotted.
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
         raise NotImplementedError("This function is not implemented yet.")
@@ -874,20 +967,21 @@ class Function:
         color_map : str = 'jet'
             The color map to use if the color is a function.
         additional_plotting_elemets : list = []
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            Plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool = True
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The plotting elements that were plotted.
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
         if self.space.num_parametric_dimensions != 1:
             raise ValueError("This function is not a curve and cannot be plotted as one.")
         
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         
         # region Generate the points to plot
         if point_type == 'evaluated_points':
@@ -895,7 +989,7 @@ class Function:
             parametric_coordinates = np.linspace(0., 1., num_points).reshape((-1,1))
             function_values = self.evaluate(parametric_coordinates, non_csdl=True)
             if len(function_values.shape) == 1:
-                function_values = function_values.reshape((-1,1))   # Here we want the physical dimension separate for vedo so put it back
+                function_values = function_values.reshape((-1,1))   # Keep physical dimension separate for plotting
 
             # scale u axis to be more visually clear based on scaling of parameter
             if function_values.shape[-1] < 3:   # Plot against u coordinate
@@ -961,40 +1055,45 @@ class Function:
             The color map to use if the color is a function.
         surface_texture : str = ""
             The surface texture to determine how light bounces off the surface.
-            See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+            This is kept for API compatibility.
         line_width : float = 3.
             The width of the lines if the plot type is wireframe.
         additional_plotting_elemets : list = []
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            Plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool = True
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The plotting elements that were plotted.
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
         if self.space.num_parametric_dimensions != 2:
             raise ValueError("This function is not a surface and cannot be plotted as one.")
 
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         color_is_function = False
 
         # region Generate the points to plot
         if point_type == 'evaluated_points':
-            num_points = 400
-
-            # Generate meshgrid of parametric coordinates
+            # num_points = 1000            # Generate meshgrid of parametric coordinates
+            # num_points = 500            # Generate meshgrid of parametric coordinates
+            # num_points = 200            # Generate meshgrid of parametric coordinates
+            # num_points = 100            # Generate meshgrid of parametric coordinates
+            num_points = 50            # Generate meshgrid of parametric coordinates
             mesh_grid_input = []
             for dimension_index in range(self.space.num_parametric_dimensions):
                 mesh_grid_input.append(np.linspace(0., 1., num_points))
             parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
-            for dimensions_index in range(self.space.num_parametric_dimensions):
-                parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
+            # np.meshgrid returns a tuple of arrays; convert to list so we can reshape elements
+            parametric_coordinates_tuple = [pc.reshape((-1, 1)) for pc in parametric_coordinates_tuple]
             parametric_coordinates = np.hstack(parametric_coordinates_tuple)
             
             function_values = self.evaluate(parametric_coordinates, non_csdl=True).reshape((num_points,num_points,-1))
+            if isinstance(function_values, csdl.Variable):
+                function_values = function_values.value
             points = function_values
 
             if isinstance(color, Function):
@@ -1069,18 +1168,18 @@ class Function:
             The color map to use if the color is a function.
         surface_texture : str = ""
             The surface texture to determine how light bounces off the surface.
-            See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+            This is kept for API compatibility.
         line_width : float = 3.
             The width of the lines if the plot type is wireframe.
         additional_plotting_elemets : list = []
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            Plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool = True
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting elements are still returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting elements are still returned.
         
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The plotting elements that were plotted.
         '''
         import lsdo_function_spaces.utils.plotting_functions as pf
         if self.space.num_parametric_dimensions != 3:
@@ -1141,7 +1240,8 @@ class Function:
         # endregion Generate the points to plot
 
         # Call general plot volume function to plot the points with the colors
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         for plot_type in plot_types:
             if plot_type not in ['function', 'wireframe', 'point_cloud']:
                 raise ValueError("Invalid plot type. Must be 'function', 'wireframe', or 'point_cloud'.")
@@ -1166,6 +1266,8 @@ class Function:
             else:
                 pf.show_plot(plotting_elements, title="Volume", axes=1, interactive=True)
         return plotting_elements
+    
+    def generate_triangulation(): pass
 
     def __add__(self, other:Function) -> Function:
         return lfs.operations.add(self, other)

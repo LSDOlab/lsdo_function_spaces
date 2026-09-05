@@ -10,7 +10,7 @@ import pickle
 from pathlib import Path
 import string
 import random
-import vedo
+import pyvista as pv
 from typing import Optional, Union, Sequence
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
@@ -18,134 +18,79 @@ import lsdo_function_spaces as lfs
 from lsdo_function_spaces.utils.internal_utilities import get_projection_squared_distances
 
 def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=None):
-    # New approach - 2 stages: 
-    # 1. Find lower bound of error for each surface via very fast method (eg. bounding box)
-    # 2. Project point onto surfaces in order of increasing lower bound of error; 
-    #    stop when next lower bound error is greater than current best error
-    #
-    # Each function space should have a method to compute the lower bound of error
-    # eg, for b-splines, this could be the bounding box of the control points
-    sorting_time = 0
-    projection_time = 0
-    projections_skipped = 0
-    projections_performed = 0
-    results = []
-    
+    # Batch-project all points on each function and choose best per-point by argmin across functions.
     if functions is None:
         functions = global_functions
     if options is None:
         options = global_options
 
-    priority_inds = options['priority_inds']
-    priority_eps = options['priority_eps']
+    priority_inds = options.get('priority_inds', [])
+    priority_eps = options.get('priority_eps', 0.0)
+    direction_opt = options.get('direction', None)
+    direction = direction_opt/np.linalg.norm(direction_opt) if direction_opt is not None else None
+    extrema = options.get('extrema', False)
+    projection_tolerance = options.get('projection_tolerance', None)
+    grid_search_evaluation_cutoff = options.get('grid_search_evaluation_cutoff', None)
+    grid_search_subtraction_cutoff = options.get('grid_search_subtraction_cutoff', None)
 
-    direction = options['direction']/np.linalg.norm(options['direction']) if options['direction'] is not None else None
-    extrema = options['extrema']
-    projection_tolerance = options['projection_tolerance']
-    grid_search_evaluation_cutoff = options['grid_search_evaluation_cutoff']
-    grid_search_subtraction_cutoff = options['grid_search_subtraction_cutoff']
+    points = np.array(chunk)
+    if points.ndim == 1:
+        points = points.reshape(1, -1)
 
+    num_points = points.shape[0]
+    func_keys = list(functions.keys())
+    num_funcs = len(func_keys)
 
-    for point in chunk:
-        if extrema:
-            n = list(functions.values())[0].space.num_parametric_dimensions
-            extrema_parametric = np.array(list(itertools.product([0., 1.], repeat=n)))
-            function_extrema_dict = {i: function.evaluate(extrema_parametric).value for i, function in functions.items()}
-            
-            best_surface = None
-            best_coord = None
-            best_error = None
-            for i, function_extrema in function_extrema_dict.items():
-                for j in range(function_extrema.shape[0]):
-                    extrema_point = function_extrema[j]
-                    parametric_coordinate = extrema_parametric[j]
-                    if direction is None:
-                        error = np.linalg.norm(extrema_point - point)
-                        if best_error is None or error < best_error:
-                            best_surface = i
-                            best_coord = parametric_coordinate
-                            best_error = error
-                    else:
-                        displacement = (point - extrema_point).reshape((-1,))
-                        error = (np.linalg.norm(np.cross(displacement, direction)), np.linalg.norm(displacement))
-                        if best_error is None:
-                            best_surface = i
-                            best_coord = parametric_coordinate
-                            best_error = error
-                        elif error[0] < best_error[0]*(1 + 1e-6) and error[1] < best_error[1]:
-                            best_surface = i
-                            best_coord = parametric_coordinate
-                            best_error = error 
-            results.append((best_surface, best_coord))
-        else:
-            if direction is None:
-                lower_bounds = {i: function._compute_distance_bounds(point) for i, function in functions.items()}
-                sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: lower_bounds[x])
+    if extrema:
+        n = list(functions.values())[0].space.num_parametric_dimensions
+        extrema_parametric = np.array(list(itertools.product([0., 1.], repeat=n)))
+        func_extrema = {i: function.evaluate(extrema_parametric, non_csdl=True) for i, function in functions.items()}
 
-            else:
-                lower_bounds = {i: function._compute_distance_bounds(point, direction=direction) for i, function in functions.items()}
-                distance_bounds = {i: function._compute_distance_bounds(point) for i, function in functions.items()}
-                sorted_surfaces = sorted(lower_bounds.keys(), key=lambda x: (lower_bounds[x], distance_bounds[x]))
+        all_min_dists = np.zeros((num_points, num_funcs))
+        all_min_param_coords = np.zeros((num_points, num_funcs, extrema_parametric.shape[1]))
+        for fi, i in enumerate(func_keys):
+            extrema_points = func_extrema[i]
+            diffs = extrema_points[np.newaxis, :, :] - points[:, np.newaxis, :]
+            dists = np.linalg.norm(diffs, axis=2)
+            min_inds = np.argmin(dists, axis=1)
+            all_min_dists[:, fi] = dists[np.arange(num_points), min_inds]
+            all_min_param_coords[:, fi, :] = extrema_parametric[min_inds]
 
-            # project onto the first surface
-            best_surface = sorted_surfaces[0]
-            function = functions[best_surface]
-            best_coord = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
-                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'], 
+        best_func_inds = np.argmin(all_min_dists, axis=1)
+        best_coords = all_min_param_coords[np.arange(num_points), best_func_inds]
+        return list(zip([func_keys[fi] for fi in best_func_inds], best_coords))
+
+    parametric_coords_per_func = {}
+    errors = np.full((num_points, num_funcs), np.inf)
+
+    for fi, i in enumerate(func_keys):
+        function = functions[i]
+        param_coords = function.project(points, direction=direction_opt, grid_search_density_parameter=options.get('grid_search_density_parameter', 1),
+                                        max_newton_iterations=options.get('max_newton_iterations', 100), newton_tolerance=options.get('newton_tolerance', 1e-6),
                                         projection_tolerance=projection_tolerance, grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
-                                        grid_search_subtraction_cutoff=grid_search_subtraction_cutoff, do_pickles=False)
-            projections_performed += 1
+                                        grid_search_subtraction_cutoff=grid_search_subtraction_cutoff, do_pickles=False,
+                                        use_line_search=options.get('use_line_search', False))
 
-            if direction is None:
-                best_error = np.linalg.norm(function.evaluate(best_coord, coefficients=function.coefficients.value) - point)
-            else:
-                function_value = function.evaluate(best_coord, coefficients=function.coefficients.value)
-                displacement = (point - function_value).reshape((-1,))
-                best_error = (np.linalg.norm(np.cross(displacement, direction)), np.linalg.norm(displacement)) # (directed distance, total distance)
+        func_vals = function.evaluate(param_coords, coefficients=function.coefficients.value, non_csdl=True)
+        if direction is None:
+            errs = np.linalg.norm(func_vals - points, axis=1)
+        else:
+            displacement = points - func_vals
+            dir_norm = direction/np.linalg.norm(direction)
+            directed = np.linalg.norm(np.cross(displacement, dir_norm), axis=1)
+            total = np.linalg.norm(displacement, axis=1)
+            errs = directed + 1e-6 * total
 
-            for name in sorted_surfaces:
-                function = functions[name]
-                bound = lower_bounds[name]
-                # TODO: TEMPORARY DISABLING THE BREAK BECAUSE I'M RUNNING INTO AN ERROR WHEN I HAVE A SPARSE SET OF COEFFICIENTS
-                if direction is None:
-                    if bound > best_error:
-                        projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
-                        break
-                else:
-                    if bound > best_error[0]:
-                        projections_skipped += len(sorted_surfaces) - sorted_surfaces.index(name)
-                        break
-                parametric_coordinate = function.project(point.reshape(1,-1), direction=options['direction'], grid_search_density_parameter=options['grid_search_density_parameter'],
-                                                        max_newton_iterations=options['max_newton_iterations'], newton_tolerance=options['newton_tolerance'], 
-                                                        projection_tolerance=projection_tolerance, grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
-                                                        grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,  do_pickles=False)
-                projections_performed += 1
-                if direction is None:
-                    error = np.linalg.norm(function.evaluate(parametric_coordinate, coefficients=function.coefficients.value) - point)
-                    if name in priority_inds:
-                        error = error - priority_eps
-                    if error < best_error:
-                        best_surface = name
-                        best_coord = parametric_coordinate
-                        best_error = error
-                else:
-                    function_value = function.evaluate(parametric_coordinate, coefficients=function.coefficients.value)
-                    displacement = (point - function_value).reshape((-1,))
-                    error = (np.linalg.norm(np.cross(displacement, direction)), np.linalg.norm(displacement))
-                    if name in priority_inds:
-                        error[0] = error[0] - priority_eps
-                        error[1] = error[1] - priority_eps
-                    # TODO: make the 1e-6 a parameter
-                    if error[0] < best_error[0]*(1 + 1e-6) and error[1] < best_error[1]:
-                        best_surface = name
-                        best_coord = parametric_coordinate
-                        best_error = error 
-            results.append((best_surface, best_coord))
+        if i in priority_inds:
+            errs = errs - priority_eps
 
-    # print(f"Projections performed: {projections_performed}")
-    # print(f"Projections skipped: {projections_skipped}")
+        errors[:, fi] = errs
+        parametric_coords_per_func[i] = param_coords
 
-    return results
+    best_func_indices = np.argmin(errors, axis=1)
+    coords_stack = np.stack([parametric_coords_per_func[i] for i in func_keys], axis=1)
+    best_coords = coords_stack[np.arange(num_points), best_func_indices]
+    return list(zip([func_keys[fi] for fi in best_func_indices], best_coords))
 
 
 @dataclass
@@ -313,17 +258,18 @@ class FunctionSet:
         if len(u_vectors.shape) == 1:
             u_vectors = u_vectors.reshape((1, -1))
             v_vectors = v_vectors.reshape((1, -1))
-        normals = csdl.cross(u_vectors, v_vectors, axis=1)
+        normals = csdl.cross(v_vectors, u_vectors, axis=1)
         normals = normals / (csdl.expand(csdl.norm(normals + 1e-8, axes=(1,)), (normals.shape), action='i->ij') + 1e-12)
 
         if plot:
-            import vedo
             import lsdo_function_spaces as lfs
-            scale = 1e-1
+            scale = 2e-1
             points = self.evaluate(parametric_coordinates, non_csdl=True)
             plotting_elements = self.plot(opacity=0.8, show=False)
-            varrows = vedo.Arrows(points, points+scale*normals.value, c='black')
-            plotting_elements.append(varrows)
+            arrow_data = pv.PolyData(points)
+            arrow_data["vectors"] = normals.value * scale
+            arrows = arrow_data.glyph(orient="vectors", scale="vectors", factor=1.0)
+            plotting_elements.append({"mesh": arrows, "kwargs": {"color": "red"}})
             lfs.show_plot(plotting_elements, 'normals')
         return normals
 
@@ -525,7 +471,7 @@ class FunctionSet:
                 max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=None, plot:bool=False,
                 extrema=False, force_reprojection=False, priority_inds:Optional[list[int]]=None, priority_eps:float=1e-3,
                 grid_search_evaluation_cutoff:Optional[float]=None, grid_search_subtraction_cutoff:Optional[float]=None,
-                grid_search_density_cutoff:int=50) -> list[tuple[int, npt.NDArray[np.float64]]]:
+                grid_search_density_cutoff:int=50, do_pickles:bool=True, use_line_search:bool=False) -> list[tuple[int, npt.NDArray[np.float64]]]:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -570,6 +516,8 @@ class FunctionSet:
             The cutoff for the grid search density parameter. If the grid search density parameter exceeds this value during refinement,
               the projection will be stopped.
             This is to prevent the projection from taking too long. If the projection is stopped, a warning will be printed.
+                use_line_search : bool = False
+                        If True, use Armijo backtracking for each Newton step of the underlying functions.
         '''
         if num_workers is None:
             num_workers = lfs.num_workers
@@ -577,27 +525,32 @@ class FunctionSet:
         if isinstance(points, csdl.Variable):
             points = points.value
         
-        output = self._check_whether_to_load_projection(points, direction, 
-                                                        grid_search_density_parameter, 
-                                                        max_newton_iterations, 
-                                                        newton_tolerance,
-                                                        projection_tolerance,
-                                                        extrema,
-                                                        priority_inds, priority_eps,
-                                                        force_reprojection,
-                                                        grid_search_density_cutoff)
-        if isinstance(output, list):
-            parametric_coordinates = output
-            if plot:
-                projection_results = self.evaluate(parametric_coordinates).value
-                plotting_elements = []
-                plotting_elements.append(lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False))
-                # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
-                plotting_elements.append(lfs.plot_points(projection_results, color='#ff0000', size=5, show=False))
-                self.plot(opacity=0.3, additional_plotting_elements=plotting_elements, show=True)
-            return parametric_coordinates
+        if do_pickles:
+            output = self._check_whether_to_load_projection(points, direction, 
+                                                            grid_search_density_parameter, 
+                                                            max_newton_iterations, 
+                                                            newton_tolerance,
+                                                            projection_tolerance,
+                                                            extrema,
+                                                            priority_inds, priority_eps,
+                                                            force_reprojection,
+                                                            grid_search_density_cutoff)
+            if isinstance(output, list):
+                parametric_coordinates = output
+                if plot:
+                    projection_results = self.evaluate(parametric_coordinates).value
+                    plotting_elements = []
+                    plotting_elements = lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False)
+                    # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
+                    plotting_elements = lfs.plot_points(projection_results, color='#ff0000', size=5, show=False,
+                                                        additional_plotting_elements=plotting_elements)
+                    self.plot(opacity=0.3, additional_plotting_elements=plotting_elements, show=True)
+                return parametric_coordinates
+            else:
+                name_space_dict, long_name_space = output
         else:
-            name_space_dict, long_name_space = output
+            name_space_dict = None
+            long_name_space = None
             
         if priority_inds is None:
             priority_inds = []
@@ -607,7 +560,8 @@ class FunctionSet:
                    'projection_tolerance': None, 'extrema': extrema,
                    'priority_inds': priority_inds, 'priority_eps': priority_eps,
                    'grid_search_evaluation_cutoff': grid_search_evaluation_cutoff,
-                   'grid_search_subtraction_cutoff': grid_search_subtraction_cutoff}
+                   'grid_search_subtraction_cutoff': grid_search_subtraction_cutoff,
+                   'use_line_search': use_line_search}
         
 
 
@@ -632,8 +586,12 @@ class FunctionSet:
             # pool = Pool(num_workers)
             # results = pool.map(find_best_surface_chunked, chunks)
 
-            with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-                results = executor.map(find_best_surface_chunked, chunks)
+            try:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
+                    results = executor.map(find_best_surface_chunked, chunks)
+            except (PermissionError, RuntimeError):
+                # Fall back to serial if process pools are restricted or unsafe under spawn.
+                results = map(lambda c: find_best_surface_chunked(c, self.functions, options), chunks)
 
             parametric_coordinates = []
             for result in results:
@@ -673,24 +631,26 @@ class FunctionSet:
                     print('--'*50)
                     break
 
-        characters = string.ascii_letters + string.digits  # Alphanumeric characters
-        # Generate a random string of the specified length
-        random_string = ''.join(random.choice(characters) for _ in range(6))
-        projections_folder = 'stored_files/projections'
-        name_space_file_path = projections_folder + '/name_space_dict.pickle'
-        name_space_dict[long_name_space] = random_string
-        with open(name_space_file_path, 'wb+') as handle:
-            pickle.dump(name_space_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        if do_pickles:
+            characters = string.ascii_letters + string.digits  # Alphanumeric characters
+            # Generate a random string of the specified length
+            random_string = ''.join(random.choice(characters) for _ in range(6))
+            projections_folder = 'stored_files/projections'
+            name_space_file_path = projections_folder + '/name_space_dict.pickle'
+            name_space_dict[long_name_space] = random_string
+            with open(name_space_file_path, 'wb+') as handle:
+                pickle.dump(name_space_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-        with open(projections_folder + f'/{random_string}.pickle', 'wb+') as handle:
-            pickle.dump(parametric_coordinates, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            with open(projections_folder + f'/{random_string}.pickle', 'wb+') as handle:
+                pickle.dump(parametric_coordinates, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         if plot:
             projection_results = self.evaluate(parametric_coordinates).value
             plotting_elements = []
-            plotting_elements.append(lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False))
+            plotting_elements = lfs.plot_points(points, color='#00ff00', size=10, opacity=0.6, show=False)
             # plotting_elements.append(lfs.plot_points(projection_results, color='#F5F0E6', size=10, show=False))
-            plotting_elements.append(lfs.plot_points(projection_results, color='#ff0000', size=5, show=False))
+            plotting_elements = lfs.plot_points(projection_results, color='#ff0000', size=5, show=False,
+                                                additional_plotting_elements=plotting_elements)
             self.plot(opacity=0.3, additional_plotting_elements=plotting_elements, show=True)
 
         return parametric_coordinates
@@ -856,7 +816,6 @@ class FunctionSet:
             See 
 
         '''
-        import vedo
         from lsdo_function_spaces.utils.plotting_functions import get_surface_mesh
 
         vertices = []
@@ -875,22 +834,26 @@ class FunctionSet:
             vertices.extend(fn_vertices)
             faces.extend(fn_faces)
 
-        mesh = vedo.Mesh([vertices, faces]).opacity(opacity).lighting(surface_texture)
+        faces_array = []
+        for face in faces:
+            faces_array.extend([len(face), *face])
+        mesh = pv.PolyData(np.array(vertices), np.array(faces_array, dtype=np.int64))
 
         if c_points is not None:
-            mesh.cmap(color_map, c_points)
-            mesh.add_scalarbar()
-        else:
-            mesh.color(color)
+            mesh["scalars"] = c_points
 
         if show:
-            plotter = vedo.Plotter()
-            plotter.show(mesh)
+            plotter = pv.Plotter()
+            if c_points is not None:
+                plotter.add_mesh(mesh, opacity=opacity, cmap=color_map, show_scalar_bar=True)
+            else:
+                plotter.add_mesh(mesh, opacity=opacity, color=color)
+            plotter.show()
         return mesh
 
     def plot(self, camera:Optional[dict[str,tuple[float]]]=None, screenshot:str="",title:Optional[str]=None, interactive:bool=True, point_types:list[str]=['evaluated_points'], plot_types:list[str]=['function'],
               opacity:float=1., color:Union[str,lfs.FunctionSet]='#00629B', color_map:str='jet', surface_texture:str="",
-              line_width:float=3., additional_plotting_elements:list[vedo.PointsVisual]=[], show:bool=True) -> list[vedo.PointsVisual]:
+              line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
         '''
         Plots the function set.
 
@@ -906,23 +869,23 @@ class FunctionSet:
             The 6 digit color code to plot the B-spline as. If a FunctionSet is provided, the FunctionSet will be used to color the B-spline.
         surface_texture : str = "" {"metallic", "glossy", ...}, optional
             The surface texture to determine how light bounces off the surface.
-            See https://github.com/marcomusy/vedo/blob/master/examples/basic/lightings.py for options.
+            This is kept for API compatibility.
         color_map : str = 'jet'
             The color map to use if the color is a function.
         additional_plotting_elemets : list
-            Vedo plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
+            Plotting elements that may have been returned from previous plotting functions that should be plotted with this plot.
         show : bool
-            A boolean on whether to show the plot or not. If the plot is not shown, the Vedo plotting element is returned.
+            A boolean on whether to show the plot or not. If the plot is not shown, the plotting element is returned.
 
         Returns
         -------
         plotting_elements : list
-            The Vedo plotting elements that were plotted.
+            The plotting elements that were plotted.
         '''
-        import vedo
-
+        import lsdo_function_spaces.utils.plotting_functions as pf
         # Then there must be a discrete index so loop over subfunctions and plot them
-        plotting_elements = additional_plotting_elements.copy()
+        # Flatten nested lists to handle cases where users pass [plot_points_result]
+        plotting_elements = pf._flatten_plotting_elements(additional_plotting_elements.copy())
         color_min = None
         color_max = None
         for i, function in self.functions.items():
@@ -944,12 +907,8 @@ class FunctionSet:
             else:
                 plotting_elements = out
         if isinstance(color, lfs.FunctionSet):
-            # plot some invisible points to get the scalar bar
-            element = vedo.Points(np.zeros((2,3))).opacity(0)
             print('Color values', color_min, color_max)
-            element.cmap(color_map, [color_min, color_max])
-            plotting_elements.append(element)
-            scalarbar = plotting_elements[-1].add_scalarbar()
+            plotting_elements.append(pf.make_scalar_bar_element(color_min, color_max, color_map=color_map))
         if show:
             if self.name is not None:
                 if title is not None:
@@ -987,7 +946,7 @@ class FunctionSet:
 
         Parameters
         ----------
-        grid_resolution : tuple[int, ...] or int
+        grid_resolution : tuple[int,...] or int
             The resolution of the grid in each parametric dimension.
 
         Returns
@@ -1088,3 +1047,42 @@ if __name__ == "__main__":
                                                      indices_of_functions_to_refit=[0],
                                                      grid_resolution=(fitting_grid_resolution,fitting_grid_resolution))
     new_function_set.plot()
+
+    # Projection sanity check against the rectangular wing geometry with many points.
+    wing = lfs.import_file('examples/import_files_for_examples/rectangular_wing.stp', parallelize=False)
+    
+    # Generate a large set of points distributed spanwise across all wing surfaces
+    spanwise_samples = 100  # dense spanwise distribution
+    chordwise_samples = 100  # dense chordwise distribution
+    all_sample_points = []
+    
+    for surface_idx, func in wing.functions.items():
+        # Create a parametric grid for this surface
+        u_params = np.linspace(0.0, 1.0, chordwise_samples)
+        v_params = np.linspace(0.0, 1.0, spanwise_samples)
+        u_grid, v_grid = np.meshgrid(u_params, v_params)
+        parametric_coords = np.column_stack([u_grid.ravel(), v_grid.ravel()])
+        
+        # Evaluate the function at the parametric grid
+        surface_points = func.evaluate(parametric_coords, non_csdl=True)
+        # Add small perturbation normal to the surface for realistic projection test
+        all_sample_points.append(surface_points + np.array([0.0, 0.0, 0.02]))
+    
+    sample_points = np.vstack(all_sample_points)
+    print(f'Projecting {sample_points.shape[0]} points distributed spanwise over {len(wing.functions)} wing surfaces...')
+    
+    from time import perf_counter
+    start_time = perf_counter()
+    projection_results = wing.project(sample_points, do_pickles=False, force_reprojection=True, plot=False)
+    end_time = perf_counter()
+    print(f'Projection completed in {end_time - start_time:.2f} seconds ({sample_points.shape[0] / (end_time - start_time):.0f} points/sec).')
+    
+    assert len(projection_results) == sample_points.shape[0], f'Expected {sample_points.shape[0]} results, got {len(projection_results)}'
+    assert all(np.asarray(result[1]).shape == (2,) for result in projection_results), 'Not all results have 2D parametric coordinates'
+    print(f'✓ Batch projection test PASSED: {len(projection_results)} points successfully projected.')
+    
+    # Show distribution of projections across surfaces
+    surface_counts = {}
+    for result in projection_results:
+        surface_counts[result[0]] = surface_counts.get(result[0], 0) + 1
+    print(f'  Points per surface: {dict(sorted(surface_counts.items()))}')

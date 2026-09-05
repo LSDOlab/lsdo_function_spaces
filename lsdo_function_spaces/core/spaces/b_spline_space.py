@@ -341,7 +341,6 @@ def test_single_surface():
     print('average time: ', (t2-t1)/num_trials)
     projected_points = b_spline.evaluate(parametric_coordinates=projected_points_parametric, plot=False).value
 
-    import vedo
     # b_spline_plot = b_spline.plot(show=False, opacity=0.8)
     # projected_points_plot = vedo.Points(projected_points, r=10, c='g')
     # projecting_points_plot = vedo.Points(projecting_points, r=10, c='r')
@@ -419,11 +418,10 @@ def test_multiple_surfaces():
     projecting_points = np.vstack((projecting_points_1, projecting_points_2))
 
     import time
-    import vedo
     num_trials = 1
     t1 = time.time()
     for i in range(num_trials):
-        projected_points_parametric = my_b_spline_surface_set.project(points=projecting_points, plot=False, grid_search_density_parameter=1)
+        projected_points_parametric = my_b_spline_surface_set.project(points=projecting_points, plot=False, grid_search_density_parameter=1, force_reprojection=True)
     t2 = time.time()
     print('average time: ', (t2-t1)/num_trials)
     projected_points = my_b_spline_surface_set.evaluate(parametric_coordinates=projected_points_parametric, plot=False).value

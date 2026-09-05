@@ -80,13 +80,13 @@ class FunctionSetSpace(lfs.FunctionSpace):
         return coeff_var, function_set
 
 
-    def generate_parametric_grid(self, grid_resolution:tuple) -> list[tuple[int, np.ndarray]]:
+    def generate_parametric_grid(self, grid_resolution:Union[tuple[int,...], int]) -> list[tuple[int, np.ndarray]]:
         '''
         Generates a parametric grid for the function set space.
 
         Parameters
         ----------
-        grid_resolution : tuple
+        grid_resolution : tuple[int,...] or int
             The resolution of the grid in each parametric dimension.
 
         Returns
