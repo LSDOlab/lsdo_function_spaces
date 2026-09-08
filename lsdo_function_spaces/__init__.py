@@ -21,8 +21,9 @@ from .core.spaces.tri_space import LinearTriangulationSpace
 
 # utilities
 from .utils.plotting_functions import plot_points, plot_curve, plot_surface, show_plot
-from .utils.file_io import import_file
+# from .utils.file_io import import_file
 from .utils.file_io_patched import import_file as import_file_patched
+from .utils.file_io_patched import import_file
 from .utils.utility_functions import create_b_spline_from_corners, create_enclosure_block
 
 # operations
