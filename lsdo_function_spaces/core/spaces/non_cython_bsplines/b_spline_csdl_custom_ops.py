@@ -6,14 +6,12 @@ import warnings
 
 from lsdo_function_spaces.core.spaces.non_cython_bsplines.compute_basis_matrix_jax import compute_basis_matrix_jax
 try:
-    parent = csdl.experimental.CustomExplicitOperationBeta
+    _CustomExplicitOperation = csdl.experimental.CustomExplicitOperationBeta
 except AttributeError:
-    parent = object
-
-parent = csdl.experimental.CustomExplicitOperationBeta
+    _CustomExplicitOperation = object
 
 
-class BasisMatrixCustomOpVJP(parent):
+class BasisMatrixCustomOpVJP(_CustomExplicitOperation):
     def __init__(
             self,
             knots: tuple,
@@ -33,7 +31,7 @@ class BasisMatrixCustomOpVJP(parent):
                 degrees=self.degree,
                 knot_vectors=self.knots,
                 der_orders=self.der_orders,
-            ).todense().squeeze()
+            ).todense()
         
         def compute_basis_matrix_vjp(parametric_coordinates):
             return jax.vjp(
@@ -80,7 +78,7 @@ class BasisMatrixCustomOpVJP(parent):
         d_parametric_coordinates = basis_matrix_fun(jnp.array(parametric_coordinates))(jnp.array(d_basis_matrix))[0]
         outputs["d_parametric_coordinates"] = np.array(d_parametric_coordinates)
 
-class BasisMatrixCustomOp(parent):
+class BasisMatrixCustomOp(_CustomExplicitOperation):
     def __init__(
             self,
             knots: tuple,
@@ -158,7 +156,7 @@ class BasisMatrixCustomOp(parent):
         basis_matrix = basis_matrix_fun(jnp.array(parametric_coordinates))
         outputs["basis_matrix"] = np.array(basis_matrix).reshape(self.basis_matrix_shape)
 
-class BSplineEvalCustomOpVJP(parent):
+class BSplineEvalCustomOpVJP(_CustomExplicitOperation):
     def __init__(
             self, 
             knots, 
@@ -181,7 +179,7 @@ class BSplineEvalCustomOpVJP(parent):
             return basis_matrix @ coeffs.reshape(-1, num_phys_dims)
         
         def evaluate_b_spline_jax_wrapped(us, coeffs):
-            return evluate_b_spline(us, self.degree, self.knots, coeffs, self.der_orders).squeeze()
+            return evluate_b_spline(us, self.degree, self.knots, coeffs, self.der_orders)
 
         def compute_vjp(us, coeffs):
             return jax.vjp(
@@ -243,7 +241,7 @@ class BSplineEvalCustomOpVJP(parent):
         outputs["d_parametric_coordinates"] = np.array(d_parametric_coordinates)
         outputs["d_coefficients"] = np.array(d_coefficients)
 
-class BSplineEvalCustomOp(parent):
+class BSplineEvalCustomOp(_CustomExplicitOperation):
     def __init__(self, knots, degree, coefficients_shape, der_orders=None):
         super().__init__()
         self.knots = tuple(jnp.array(knots_i) for knots_i in knots)
@@ -324,7 +322,9 @@ class BSplineEvalCustomOp(parent):
             jnp.array(parametric_coordinates),
             jnp.array(coefficients),
         )
-        outputs["b_spline_values"] = np.array(b_spline_values)
+        outputs["b_spline_values"] = np.array(b_spline_values).reshape(
+            (parametric_coordinates.shape[0], coefficients.shape[-1])
+        )
 
 
 if __name__ == "__main__":

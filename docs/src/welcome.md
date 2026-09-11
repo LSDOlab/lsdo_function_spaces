@@ -1,26 +1,31 @@
-# Welcome to lsdo_function_spaces
+# Welcome to lsdo_function_spaces (v1.0.0)
 
-![alt text](/src/images/lsdolab.png "Title displayed")
+![LSDO Lab](/src/images/lsdolab.png "LSDO Lab")
 
-This page describes conceptually the purpose of your package at a high-level.
-Start with a one sentence description of your package.
-For example, "This repository serves as a template for all LSDOlab projects with regard to documentation, testing and hosting of open-source code."
-Include figures from the relevant paper and citation.
+**lsdo_function_spaces** is a high-performance, pure-Python library for continuous function representations, multivariate B-splines, scattered data interpolation, and CAD geometry processing tailored for Multidisciplinary Design Optimization (MDO).
 
-# Cite us
+It integrates directly with [CSDL](https://github.com/LSDOlab/csdl) and CSDL Alpha, providing analytic derivative-compatible function spaces, JAX-accelerated evaluations, and inverse projection solvers for gradient-based design.
+
+---
+
+## Key Capabilities
+
+- **Pure-Python Multivariate B-Splines**: Arbitrary dimension ($d \ge 1$), arbitrary degree tensor-product B-splines with 100% pure Python and JAX backends (zero C/Cython compiler dependencies).
+- **Inverse Point & Surface Projection**: Robust two-stage Newton-Raphson nonlinear solvers with adaptive refinement and exact adjoint sensitivity computation.
+- **Multi-Patch Geometries & CAD Processing**: `FunctionSet` and `FunctionSetSpace` for parsing and manipulating complex multi-surface assemblies from OpenVSP and CAD formats (STEP, IGES).
+- **Generalized Function Spaces**: Inverse Distance Weighting (IDW), Radial Basis Functions (RBF), polynomial spaces, and linear triangulations.
+- **Analytic Sensitivities & CSDL Alpha**: First-class computational graph integration supporting forward and reverse Vector-Jacobian Products (VJPs) for seamless gradient propagation.
+
+---
+
+## Cite us
 ```none
-@article{lsdo2023,
-        Author = { Author 1, Author 2, and Author 3},
-        Journal = {Name of the Journal},
-        Title = {Title of your paper},
-        pages = {203},
-        year = {2023},
-        issn = {0123-4567},
-        doi = {https://doi.org/}
-        }
+@article{lsdo_function_spaces,
+    author  = {Andrew Fletcher},
+    title   = {lsdo_function_spaces: Continuous Function Spaces and Differentiable B-Spline Representations for MDO},
+    year    = {2024}
+}
 ```
-
-<!-- Remove/add custom pages from/to toc as per your package's requirement -->
 
 ```{toctree}
 :maxdepth: 1
@@ -29,8 +34,6 @@ Include figures from the relevant paper and citation.
 src/getting_started
 src/background
 src/tutorials
-src/custom_1
-src/custom_2
 src/examples
 src/api
 ```

@@ -6,8 +6,21 @@ import numpy as np
 import numpy.typing as npt
 import scipy.sparse as sps
 
+import sys
 import pickle
 from pathlib import Path
+
+# NumPy 1.x / 2.x pickle compatibility shim
+if "numpy._core" not in sys.modules:
+    try:
+        import numpy.core as _np_core
+        sys.modules["numpy._core"] = _np_core
+        for _sub in ("numeric", "multiarray", "umath", "numerictypes", "fromnumeric"):
+            if hasattr(_np_core, _sub):
+                sys.modules[f"numpy._core.{_sub}"] = getattr(_np_core, _sub)
+    except (ImportError, AttributeError):
+        pass
+
 import string
 import random
 from time import perf_counter
@@ -826,8 +839,11 @@ class Function:
         
         name_space_dict_file_path = Path(name_space_file_path)
         if name_space_dict_file_path.is_file():
-            with open(name_space_file_path, 'rb') as handle:
-                name_space_dict = pickle.load(handle)
+            try:
+                with open(name_space_file_path, 'rb') as handle:
+                    name_space_dict = pickle.load(handle)
+            except Exception:
+                name_space_dict = {}
         else:
             Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
             name_space_dict = {}
@@ -835,13 +851,15 @@ class Function:
         if long_name_space in name_space_dict.keys() and not force_reproject:
             short_name_space = name_space_dict[long_name_space]
             saved_projections_file = projections_folder + f'/{short_name_space}.pickle'
-            with open(saved_projections_file, 'rb') as handle:
-                parametric_coordinates = pickle.load(handle)
-                return parametric_coordinates
-        else:
-            Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
-
-            return name_space_dict, long_name_space
+            try:
+                with open(saved_projections_file, 'rb') as handle:
+                    parametric_coordinates = pickle.load(handle)
+                    return parametric_coordinates
+            except Exception:
+                pass
+        
+        Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
+        return name_space_dict, long_name_space
 
     def plot(self, point_types:list[str]=['evaluated_points'], plot_types:list[str]=['function'],
               opacity:float=1., color:str|Function='#00629B', color_map:str='jet', surface_texture:str="",

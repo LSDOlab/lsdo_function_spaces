@@ -1,15 +1,7 @@
-# Advanced tutorials
+# Advanced Tutorials
 
-These pages for each category of tutorials are optional 
-and are required only if you plan to classify your tutorials
-into different classes such as basic, intermediate, advanced, etc.
-or any other classification suitable for your package.
-If no classification is required, just remove these pages
-and add the tutorial files directly into the toctree of the main
-tutorials page.
+Advanced workflows for multidisciplinary optimization:
 
-```{toctree}
-:maxdepth: 1
-
-../_temp/tutorials/advanced_tutorials/modopt_tutorial
-```
+* **CAD Assembly Import**: Importing OpenVSP and STEP files as composite `FunctionSet` geometries.
+* **CSDL Differentiable Optimization**: Propagating reverse-mode automatic differentiation through custom B-spline and projection operations.
+* **Scattered Data Interpolation**: Localized IDW and RBF representations for CFD/FEA data transfer.

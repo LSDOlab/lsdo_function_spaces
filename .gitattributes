@@ -1,0 +1,18 @@
+# Treat large mesh, CAD, serialized data, and image files as binary to avoid expensive diffing
+*.msh binary
+*.stp binary
+*.step binary
+*.STP binary
+*.STEP binary
+*.iges binary
+*.igs binary
+*.h5 binary
+*.xdmf binary
+*.stl binary
+*.vtk binary
+*.vsp3 binary
+*.pickle binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary

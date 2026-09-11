@@ -10,32 +10,29 @@ class RBFFunctionSpace(LinearFunctionSpace):
     """
     Radial Basis Function (RBF) Function Space.
 
-    This function space represents a grid of points in a parametric space using the Inverse Distance Weighting method.
-    It provides methods to compute the basis matrix and the fitting map.
+    This function space evaluates basis functions centered at support points
+    using radial basis kernels such as Gaussian, Polyharmonic, and Multiquadrics.
 
     Parameters
     ----------
     num_parametric_dimensions : int
         The number of parametric dimensions.
-    order : float
-        The order of the inverse distance weighting function.
-    conserve : bool, optional
-        If True, the weights will be normalized to conserve the sum of the values. Default is True.
-    grid_size : tuple, optional
-        The size of the grid in each parametric dimension. Default is (10,).
+    radial_function : str, optional
+        The type of radial basis function kernel ('gaussian', 'polyharmonic_spline',
+        'inverse_quadratic', 'inverse_multiquadric', 'bump'). Default is 'gaussian'.
+    points : np.ndarray, optional
+        Explicit support center points. If None, a uniform grid is generated based on grid_size.
+    grid_size : Union[int, tuple], optional
+        The size of the center point grid in each dimension. Default is 10.
+    epsilon : float, optional
+        Shape parameter for Gaussian, inverse quadratic, and multiquadric kernels. Default is 1.
+    k : int, optional
+        Power parameter for polyharmonic splines. Default is 2.
     """
 
     def __init__(self, num_parametric_dimensions:int, radial_function:str='gaussian', points:np.ndarray=None, grid_size:Union[int, tuple]=10, epsilon:float=1, k:int=2):
         """
-        Initialize an IDW function space.
-
-        Parameters
-        ----------
-        order : float
-            The order of the inverse distance weighting function.
-        conserve : bool, optional
-            If True, the weights will be normalized to conserve the sum of the values. Default is True.
-
+        Initialize an RBF function space.
         """
 
         self.grid_size = grid_size
@@ -86,6 +83,8 @@ class RBFFunctionSpace(LinearFunctionSpace):
             parametric_coordinates = parametric_coordinates.reshape(1, -1)
 
         dist = cdist(parametric_coordinates, self.points, 'euclidean')
+        if not hasattr(self, f'_{self.radial_function}'):
+            raise ValueError(f"Radial function '{self.radial_function}' is not supported.")
         phi = getattr(self, f'_{self.radial_function}')(dist)
 
         # sum the basis functions so the total influence per evaluation point is 1

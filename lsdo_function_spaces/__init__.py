@@ -1,17 +1,18 @@
-__version__ = '0.1.4'
+"""lsdo_function_spaces: Functional representations and function spaces for MDO."""
+
 import multiprocessing
+
+__version__ = "1.0.0"
 num_workers = multiprocessing.cpu_count()
 
-# core stuff
+# Core representations
 from .core.function import Function
 from .core.function_set import FunctionSet
 from .core.function_space import FunctionSpace, LinearFunctionSpace
-
-# spaces
 from .core.function_set_space import FunctionSetSpace
-# from .core.spaces.b_spline_space import BSplineSpace
-from .core.spaces.non_cython_bsplines.b_spline_space_new import BSplineSpaceNew
-from .core.spaces.non_cython_bsplines.b_spline_space_new import BSplineSpaceNew as BSplineSpace
+
+# Function spaces
+from .core.spaces.b_spline_space import BSplineSpace, BSplineSpaceNew
 from .core.spaces.polynomial_space import PolynomialSpace
 from .core.spaces.conditional_space import ConditionalSpace
 from .core.spaces.idw_space import IDWFunctionSpace
@@ -19,12 +20,45 @@ from .core.spaces.constant_space import ConstantSpace
 from .core.spaces.rbf_space import RBFFunctionSpace
 from .core.spaces.tri_space import LinearTriangulationSpace
 
-# utilities
-from .utils.plotting_functions import plot_points, plot_curve, plot_surface, show_plot
-# from .utils.file_io import import_file
-from .utils.file_io_patched import import_file as import_file_patched
-from .utils.file_io_patched import import_file
-from .utils.utility_functions import create_b_spline_from_corners, create_enclosure_block
+# Utilities
+from .utils.plotting_functions import (
+    plot_points,
+    plot_curve,
+    plot_surface,
+    show_plot,
+)
+from .utils.file_io import import_file, import_file_patched
+from .utils.utility_functions import (
+    create_b_spline_from_corners,
+    create_enclosure_block,
+)
 
-# operations
+# Operations
 from .core.operations import operations
+
+__all__ = [
+    "__version__",
+    "num_workers",
+    "Function",
+    "FunctionSet",
+    "FunctionSpace",
+    "LinearFunctionSpace",
+    "FunctionSetSpace",
+    "BSplineSpace",
+    "BSplineSpaceNew",
+    "PolynomialSpace",
+    "ConditionalSpace",
+    "ConstantSpace",
+    "IDWFunctionSpace",
+    "RBFFunctionSpace",
+    "LinearTriangulationSpace",
+    "plot_points",
+    "plot_curve",
+    "plot_surface",
+    "show_plot",
+    "import_file",
+    "import_file_patched",
+    "create_b_spline_from_corners",
+    "create_enclosure_block",
+    "operations",
+]

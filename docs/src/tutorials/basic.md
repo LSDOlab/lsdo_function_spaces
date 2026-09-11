@@ -1,15 +1,7 @@
-# Basic tutorials
+# Basic Tutorials
 
-These pages for each category of tutorials are optional 
-and are required only if you plan to classify your tutorials
-into different classes such as basic, intermediate, advanced, etc.
-or any other classification suitable for your package.
-If no classification is required, just remove these pages
-and add the tutorial files directly into the toctree of the main
-tutorials page.
+Introductory guides for `lsdo_function_spaces`:
 
-```{toctree}
-:maxdepth: 1
-
-../_temp/tutorials/basic_tutorials/jupyter_tutorial
-```
+* **B-Spline Fundamentals**: Constructing 1D curves, 2D surfaces, and 3D volumes using `BSplineSpace`.
+* **Evaluation and Differentiation**: Computing basis matrices, direct evaluation, and partial derivatives.
+* **Point Projection**: Mapping Cartesian coordinates onto spline surfaces using `Function.project`.

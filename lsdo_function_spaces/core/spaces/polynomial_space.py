@@ -8,34 +8,22 @@ from numpy.polynomial import polynomial as poly
 
 class PolynomialSpace(LinearFunctionSpace):
     """
-    Inverse Distance Weighting (IDW) Function Space.
+    Polynomial Function Space.
 
-    This function space represents a grid of points in a parametric space using the Inverse Distance Weighting method.
-    It provides methods to compute the basis matrix and the fitting map.
+    This function space represents multivariate polynomial basis functions up to
+    a specified degree/order in each parametric dimension.
 
     Parameters
     ----------
     num_parametric_dimensions : int
         The number of parametric dimensions.
-    order : float
-        The order of the inverse distance weighting function.
-    conserve : bool, optional
-        If True, the weights will be normalized to conserve the sum of the values. Default is True.
-    grid_size : tuple, optional
-        The size of the grid in each parametric dimension. Default is (10,).
+    order : Union[int, tuple[int, ...]]
+        The polynomial order/degree in each parametric dimension.
     """
 
-    def __init__(self, num_parametric_dimensions:int, order:Union[int, tuple[int]]):
+    def __init__(self, num_parametric_dimensions:int, order:Union[int, tuple[int, ...]]):
         """
-        Initialize an IDW function space.
-
-        Parameters
-        ----------
-        order : float
-            The order of the inverse distance weighting function.
-        conserve : bool, optional
-            If True, the weights will be normalized to conserve the sum of the values. Default is True.
-
+        Initialize a Polynomial function space.
         """
         self.order = order
         if isinstance(self.order, int):

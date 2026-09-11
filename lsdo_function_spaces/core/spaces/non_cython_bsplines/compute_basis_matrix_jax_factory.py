@@ -282,6 +282,9 @@ def make_bspline_evaluator(degrees, knot_vectors, der_orders=None, *, jit=True):
     return jax.jit(_eval) if jit else _eval
 
 
+make_bspline_evaluator_jax = make_bspline_evaluator
+
+
 
 if __name__ == "__main__":
     np.random.seed(42)  # For reproducibility

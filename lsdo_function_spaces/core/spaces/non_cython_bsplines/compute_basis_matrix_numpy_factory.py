@@ -34,6 +34,27 @@ def _as_tuple_arrays(knot_vectors: Sequence[np.ndarray]) -> Tuple[np.ndarray, ..
     return tuple(np.asarray(kv) for kv in knot_vectors)
 
 
+def _normalize_us_numpy(us: np.ndarray, expected_dim: Optional[int] = None) -> np.ndarray:
+    """Normalize parametric coordinates to shape (M, dim).
+
+    Accepts either a single point of shape (dim,) or a batch of shape (M, dim).
+    If expected_dim is provided, the last axis must match it.
+    """
+    us = np.asarray(us, dtype=float)
+    if us.ndim == 1:
+        if expected_dim is None:
+            raise ValueError("For 1D input, expected_dim must be provided to disambiguate shape.")
+        if us.shape[0] != expected_dim:
+            raise ValueError(f"Single parametric point has dim={us.shape[0]}, expected {expected_dim}")
+        us = us.reshape(1, expected_dim)
+    elif us.ndim == 2:
+        if expected_dim is not None and us.shape[1] != expected_dim:
+            raise ValueError(f"us has dim={us.shape[1]}, expected {expected_dim}")
+    else:
+        raise ValueError(f"us must have shape (dim,) or (M, dim); got shape {us.shape}")
+    return us
+
+
 def make_bspline_space_cache(
     degrees: Sequence[int],
     knot_vectors: Sequence[np.ndarray],
@@ -98,8 +119,8 @@ def compute_basis_stencil_numpy(
     cache : BSplineSpaceCache
         The cache used/created (useful to reuse across calls).
     """
-    us = np.asarray(us)
-    us = us.reshape(us.shape[0], -1)  # ensure 2D
+    expected_dim = len(degrees) if cache is None else cache.dim
+    us = _normalize_us_numpy(us, expected_dim=expected_dim)
     M, dim = us.shape
 
     if cache is None:
@@ -117,6 +138,8 @@ def compute_basis_stencil_numpy(
     der_orders = _as_tuple_int(der_orders)
     if len(der_orders) != dim:
         raise ValueError(f"der_orders must have length {dim}, got {len(der_orders)}")
+    if any(n < 0 for n in der_orders):
+        raise ValueError(f"der_orders must be nonnegative, got {der_orders}")
 
     spans = []
     Ns = []
@@ -128,11 +151,16 @@ def compute_basis_stencil_numpy(
         U = knot_vectors_t[i]
         n = der_orders[i]
         num_cps = n_ctrls[i]
+        zero_derivative = n > p
 
         # span: U[span] <= u < U[span+1]
         span = np.searchsorted(U, us[:, i], side="right") - 1
         span = np.clip(span, p, len(U) - p - 2)  # valid: [p, num_cps-1]
         spans.append(span)
+
+        if zero_derivative:
+            Ns.append(np.zeros((M, p + 1), dtype=float))
+            continue
 
         # Build NDU table for all M points: (M, p+1, p+1)
         ndu = np.zeros((M, p + 1, p + 1), dtype=float)
@@ -259,7 +287,8 @@ def compute_basis_matrix_numpy(
     Prefer `compute_basis_stencil_numpy` + `apply_basis_stencil_numpy` for performance.
     """
     cols, w, cache = compute_basis_stencil_numpy(us, degrees, knot_vectors, der_orders, cache=cache)
-    us = np.asarray(us).reshape(np.asarray(us).shape[0], -1)
+    expected_dim = len(degrees) if cache is None else cache.dim
+    us = _normalize_us_numpy(us, expected_dim=expected_dim)
     M = us.shape[0]
     L = cache.L
 
@@ -341,7 +370,7 @@ if __name__ == "__main__":
     u1, v1 = np.meshgrid(np.linspace(0, 1, num_para_coords), np.linspace(0, 1, num_para_coords), indexing="ij")
     us1 = np.stack((u1.ravel(), v1.ravel()), axis=-1)
 
-    der_orders = (0, 0)
+    der_orders = (1, 1)
 
     # Old-style (sparse matrix) via compatibility API
     t1 = time.perf_counter()
@@ -356,8 +385,7 @@ if __name__ == "__main__":
     t4 = time.perf_counter()
 
     max_err = np.max(np.abs(y_sparse - y_fast))
-    print("Number of B-spline evaluations: ", us1.shape[0])
-    print(f"   sparse time: {t2 - t1:.6f}s")
-    print(f"   fast time:   {t4 - t3:.6f}s")
-    print(f"   % speedup:   {(t2 - t1) / (t4 - t3):.2f}x")
-    print(f"   max abs err: {max_err:.3e}")
+    print(f"sparse time: {t2 - t1:.6f}s")
+    print(f"fast time:   {t4 - t3:.6f}s")
+    print(f"% speedup:   {(t2 - t1) / (t4 - t3):.2f}x")
+    print(f"max abs err: {max_err:.3e}")

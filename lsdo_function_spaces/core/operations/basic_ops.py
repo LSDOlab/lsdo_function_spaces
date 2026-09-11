@@ -40,7 +40,7 @@ def decorate_csdl_op(op, set_kwargs={}) -> callable:
         if is_set:
             return FunctionSet({key: Function(space=OperationFunctionSpace([arg.functions[key] if arg in functions else arg for arg in args], operation, num_parametric_dimensions[key]), coefficients=np.zeros(3)) for key in keys})
         else:
-            return OperationFunctionSpace(args, operation, num_parametric_dimensions)
+            return Function(space=OperationFunctionSpace(args, operation, num_parametric_dimensions), coefficients=np.zeros(1))
     functools.update_wrapper(wrapper, op)
     return wrapper
 

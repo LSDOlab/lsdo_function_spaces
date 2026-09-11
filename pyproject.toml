@@ -1,47 +1,86 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "lsdo_function_spaces"
-description = "A package for various functions and function spaces"
+description = "A package for functional representation and function spaces in multidisciplinary design optimization."
 readme = "README.md"
 requires-python = ">=3.9"
-license = {file = "LICENSE.txt"}
-keywords = ["CADDEE", "auto-differentation", "functions", "optimization", "B-splines"]
+license = "Apache-2.0"
+license-files = ["LICENSE.txt"]
 authors = [{name = "Andrew Fletcher", email = "afletcher168@gmail.com"}]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+]
 dependencies = [
     'numpy',
+    'scipy',
     'pyvista',
     'joblib',
     'pandas',
-    'scipy',
     'scikit-learn',
-    #'csdl_alpha @ git+https://github.com/LSDOlab/CSDL_alpha.git',
-    #'lsdo_b_splines_cython @ git+https://github.com/LSDOlab/lsdo_b_splines_cython.git'
+    'jax',
 ]
-dynamic = ['version']
+version = "1.0.0"
+
+[project.urls]
+Documentation = "https://lsdo-function-spaces.readthedocs.io/en/latest/"
+Repository = "https://github.com/LSDOlab/lsdo_function_spaces"
+"Issue Tracker" = "https://github.com/LSDOlab/lsdo_function_spaces/issues"
 
 [project.optional-dependencies]
-test = ['pytest']
+test = [
+    'pytest',
+    'pytest-cov',
+]
 docs = [
     'myst-nb',
-    'sphinx==5.3.0',
+    'sphinx>=7.0',
     'sphinx_rtd_theme',
     'sphinx-copybutton',
-    'sphinx-autoapi==2.1.0',
-    'astroid==2.15.5',
+    'sphinx-autoapi>=3.0',
     'numpydoc',
     'gitpython',
-    'sphinxcontrib-collections @ git+https://github.com/anugrahjo/sphinx-collections.git',
     'sphinxcontrib-bibtex',
 ]
-
-[tool.setuptools.dynamic]
-version = {attr = "lsdo_function_spaces.__version__"}
 
 [tool.setuptools]
 package-dir = {"" = "."}
 
 [tool.setuptools.packages.find]
-exclude = ["tutorials"]
+where = ["."]
+include = ["lsdo_function_spaces*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = [".conda", ".git", "build", "dist", "examples", "tutorials", "scratch", "docs"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "optimization: marks long-running optimization test cases",
+]
+
+[tool.coverage.run]
+source = ["lsdo_function_spaces"]
+omit = [
+    "*/site-packages/*",
+    "tests/*",
+    "docs/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]

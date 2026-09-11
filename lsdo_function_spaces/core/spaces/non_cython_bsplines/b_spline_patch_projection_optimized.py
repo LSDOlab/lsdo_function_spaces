@@ -1,33 +1,22 @@
 
 """
-Optimized B-spline surface projection (point -> parametric coords) for:
-  1) High-efficiency Gauss-Newton / Levenberg–Marquardt (LM) distance minimization
-  2) JAX implementation (jit + vmap friendly)
-  3) NumPy vectorized implementation
+Optimized B-spline surface projection (point -> parametric coords).
 
-Key idea (efficiency):
-- Avoid second derivatives (surface Hessians) entirely.
-- Minimize squared distance:  f(ξ) = 1/2 || S(ξ) - p ||^2
-  with residual r = S(ξ) - p  (phys-dim, e.g. 3)
-  Jacobian J = dS/dξ          (phys-dim x n_param, e.g. 3x2)
-- Gauss-Newton step: (J^T J) δ = - J^T r
-- LM step: (J^T J + λ I) δ = - J^T r
+Key features:
+1. High-efficiency Gauss-Newton / Levenberg-Marquardt (LM) distance minimization.
+2. JAX implementation (jit + vmap friendly).
+3. NumPy vectorized implementation.
 
-This is usually faster and more robust than Newton on the orthogonality conditions,
-because it only requires first derivatives and yields symmetric SPD 2x2 systems.
-
-Dependencies:
-- JAX path uses an evaluator callable for S and partials:
-    evaluate_b_spline_jax(us, degrees, knot_vectors, coeffs, der_orders=None)
-  If you have the factory version, you can substitute it for extra performance.
-
-- NumPy path expects an evaluator for S and partials; you can plug in your
-  compute_basis_matrix_numpy_factory stencil-based evaluator.
+Algorithm overview:
+- Avoids second derivatives (surface Hessians) entirely.
+- Minimizes squared distance: f(xi) = 1/2 * || S(xi) - p ||^2.
+- Gauss-Newton step: (J^T J) delta = - J^T r.
+- LM step: (J^T J + lambda I) delta = - J^T r.
 
 Both implementations implement:
-- box constraints ξ ∈ [0,1]^n via clipping
-- simple active-set-like masking near bounds to keep steps feasible
-- early stopping (optional) using a convergence mask
+- Box constraints via clipping.
+- Active-set masking near bounds.
+- Early stopping using convergence masks.
 """
 from __future__ import annotations
 
@@ -57,19 +46,18 @@ except Exception:  # pragma: no cover
 
 @dataclass(frozen=True)
 class LMParams:
-    max_iter: int = 100
-    tol_grad: float = 1e-14          # ||g|| threshold
-    tol_step: float = 1e-14          # ||δ|| threshold
-    lambda0: float = 1e-10            # initial damping
+    max_iter: int = 50
+    tol_grad: float = 1e-12          # ||g|| threshold
+    tol_step: float = 1e-12          # ||δ|| threshold
+    lambda0: float = 1e-3            # initial damping
     lambda_min: float = 1e-12
     lambda_max: float = 1e12
     lambda_up: float = 10.0          # multiply λ when step not accepted
     lambda_down: float = 0.1         # multiply λ when step accepted
-    accept_ratio: float = 1e-8       # predicted vs actual improvement threshold
+    accept_ratio: float = 1e-4       # predicted vs actual improvement threshold
     # bounds handling:
     use_active_set: bool = True
-    bound_eps: float = 1e-12           # treat u<=eps as lower-active, u>=1-eps as upper-active
-    snap_eps: float = 1e-8           # snap near-boundary iterates to exactly 0/1
+    bound_eps: float = 0.0           # treat u<=eps as lower-active, u>=1-eps as upper-active
 
 
 def _ensure_knot_arrays_jax(knots):
@@ -83,13 +71,7 @@ def _eval_surface_and_jac_jax(
     coeffs: "jnp.ndarray",
     knots: Tuple[Sequence[float], ...],
 ) -> Tuple["jnp.ndarray", "jnp.ndarray"]:
-    """
-    Evaluate S(u) and J(u) where J is (phys_dim, n_param).
-    u: (n_param,)
-    returns:
-      S: (phys_dim,)
-      J: (phys_dim, n_param)
-    """
+    """Evaluate S(u) and J(u) where J is (phys_dim, n_param)."""
     n_param = len(degrees)
     uu = u.reshape(1, n_param)
 
@@ -150,10 +132,7 @@ def project_point_gauss_newton_jax(
     use_active_set: bool = True,
     bound_eps: float = 0.0,
 ):
-    """
-    Fast Gauss-Newton projection for one point.
-    Returns u*, converged, n_iter
-    """
+    """Fast Gauss-Newton projection for one point."""
     knots = _ensure_knot_arrays_jax(knots)
     if evaluate_b_spline_jax is None:
         raise ImportError("evaluate_b_spline_jax not found; check your imports.")
@@ -217,15 +196,7 @@ def project_point_lm_jax(
     knots: Tuple[Sequence[float], ...],
     params: LMParams = LMParams(),
 ):
-    """
-    Levenberg–Marquardt projection for one point (distance minimization).
-
-    Uses a simple acceptance test based on actual decrease in 0.5||r||^2
-    and predicted decrease from quadratic model.
-
-    Returns:
-      u*, converged, n_iter, final_lambda
-    """
+    """Levenberg-Marquardt projection for one point (distance minimization)."""
     knots = _ensure_knot_arrays_jax(knots)
     if evaluate_b_spline_jax is None:
         raise ImportError("evaluate_b_spline_jax not found; check your imports.")
@@ -303,14 +274,7 @@ def make_projector_lm_jax(
     params: LMParams = LMParams(),
     jit: bool = True,
 ):
-    """
-    Factory that returns a batched projector:
-      proj(points, u0s, coeffs) -> (u*, converged)
-
-    points: (M, phys_dim)
-    u0s:    (M, n_param)
-    coeffs: (n_ctrl, phys_dim) or (..control net.., phys_dim) flattened inside evaluate_b_spline_jax
-    """
+    """Factory that returns a batched projector."""
     knots = _ensure_knot_arrays_jax(knots)
     if jax is None:
         raise ImportError("JAX is not available.")
@@ -337,18 +301,13 @@ def make_projector_lm_jax(
 # ----------------------------
 try:
     # If you have your optimized stencil evaluator factory, you can swap it in.
-    from lsdo_function_spaces.core.spaces.non_cython_bsplines.compute_basis_matrix_numpy_factory_patched import make_bspline_evaluator_numpy
+    from lsdo_function_spaces.core.spaces.non_cython_bsplines.compute_basis_matrix_numpy_factory import make_bspline_evaluator_numpy
 except Exception:  # pragma: no cover
     make_bspline_evaluator_numpy = None
 
 
 def _solve_2x2_spd_numpy(A: _np.ndarray, b: _np.ndarray) -> _np.ndarray:
-    """
-    Vectorized solve for batches of 2x2 systems:
-      A: (M,2,2) SPD-ish
-      b: (M,2)
-    returns x: (M,2)
-    """
+    """Vectorized solve for batches of 2x2 systems."""
     a00 = A[:, 0, 0]
     a01 = A[:, 0, 1]
     a10 = A[:, 1, 0]
@@ -373,12 +332,29 @@ def _active_mask_numpy(u: _np.ndarray, g: _np.ndarray, eps: float) -> _np.ndarra
     return ~inactive
 
 
-def _snap_to_unit_box_bounds_numpy(u: _np.ndarray, eps: float) -> _np.ndarray:
-    if eps <= 0.0:
-        return u
-    u = _np.where(u <= eps, 0.0, u)
-    u = _np.where(u >= (1.0 - eps), 1.0, u)
-    return u
+def _build_masked_lm_system_numpy(
+    A: _np.ndarray,
+    g: _np.ndarray,
+    active: _np.ndarray,
+    lam: _np.ndarray,
+) -> tuple[_np.ndarray, _np.ndarray]:
+    """Build the masked LM linear systems.
+
+    Active coordinates use the damped GN system. Inactive coordinates are
+    frozen with an identity diagonal and zero RHS so the system remains SPD.
+    """
+    M, n_param, _ = A.shape
+    A_lm = A.copy()
+    idx = _np.arange(n_param)
+    A_lm[:, idx, idx] += lam[:, None]
+
+    mask2 = active[:, :, None] & active[:, None, :]
+    A_mask = A_lm * mask2.astype(A.dtype)
+    for k in range(n_param):
+        A_mask[:, k, k] += (~active[:, k]).astype(A.dtype)
+
+    rhs = -(g * active)
+    return A_mask, rhs
 
 
 def make_projector_lm_numpy(
@@ -424,23 +400,17 @@ def project_points_gauss_newton_numpy(
     tol_step: float = 1e-12,
     use_active_set: bool = True,
     bound_eps: float = 0.0,
-    snap_eps: float = 1e-8,
 ):
-    """
-    Vectorized Gauss-Newton projection for many points (NumPy).
-    Returns:
-      u: (M, n_param)
-      converged: (M,)
-    """
+    """Vectorized Gauss-Newton projection for many points (NumPy)."""
     M = points.shape[0]
     n_param = len(degrees)
 
     eval_S, eval_partials = make_projector_lm_numpy(degrees, knot_vectors)
 
-    u = _snap_to_unit_box_bounds_numpy(_np.clip(u0s.copy(), 0.0, 1.0), snap_eps)
+    u = _np.clip(u0s.copy(), 0.0, 1.0)
     converged = _np.zeros((M,), dtype=bool)
 
-    for iter_num in range(max_iter):
+    for _ in range(max_iter):
         S = eval_S(u, coeffs)                         # (M, phys)
         J = eval_partials(u, coeffs)                  # (M, phys, n_param)
         r = S - points                                # (M, phys)
@@ -478,7 +448,7 @@ def project_points_gauss_newton_numpy(
             delta = _solve_2x2_spd_numpy(A_mask, rhs)
             delta *= active
 
-        u_new = _snap_to_unit_box_bounds_numpy(_np.clip(u + delta, 0.0, 1.0), snap_eps)
+        u_new = _np.clip(u + delta, 0.0, 1.0)
 
         g_norm = _np.linalg.norm(g * active, axis=1)
         d_norm = _np.linalg.norm(delta, axis=1)
@@ -491,10 +461,7 @@ def project_points_gauss_newton_numpy(
         if converged.all():
             break
 
-    # return u, converged
-    residual = g_norm
-    lam = None # not used in Gauss-Newton, but for API consistency with LM version
-    return u, converged, lam, residual, iter_num
+    return u, converged
 
 
 def project_points_lm_numpy(
@@ -506,81 +473,71 @@ def project_points_lm_numpy(
     *,
     params: LMParams = LMParams(),
 ):
-    """
-    Vectorized Levenberg–Marquardt projection for many points (NumPy).
-    Uses per-point damping λ (vector of length M).
-    Returns:
-      u: (M, n_param)
-      converged: (M,)
-      lam: (M,)
-    """
+    """Vectorized Levenberg-Marquardt projection for many points (NumPy)."""
     M = points.shape[0]
     n_param = len(degrees)
 
     eval_S, eval_partials = make_projector_lm_numpy(degrees, knot_vectors)
 
-    u = _snap_to_unit_box_bounds_numpy(_np.clip(u0s.copy(), 0.0, 1.0), params.snap_eps)
+    u = _np.clip(u0s.copy(), 0.0, 1.0)
     lam = _np.full((M,), params.lambda0, dtype=float)
     converged = _np.zeros((M,), dtype=bool)
 
-    for iter_num in range(params.max_iter):
+    for _ in range(params.max_iter):
         S = eval_S(u, coeffs)                         # (M, phys)
         J = eval_partials(u, coeffs)                  # (M, phys, n_param)
         r = S - points                                # (M, phys)
-        f = 0.5 * _np.einsum("mp,mp->m", r, r)         # (M,)
+        f = 0.5 * _np.einsum("mp,mp->m", r, r)       # (M,)
 
-        g = _np.einsum("mpk,mp->mk", J, r)             # (M, n_param)
-        A = _np.einsum("mpk,mpl->mkl", J, J)           # (M, n_param, n_param)
+        g = _np.einsum("mpk,mp->mk", J, r)           # (M, n_param)
+        A = _np.einsum("mpk,mpl->mkl", J, J)         # (M, n_param, n_param)
 
         if params.use_active_set:
             active = _active_mask_numpy(u, g, params.bound_eps)
         else:
             active = _np.ones_like(u, dtype=bool)
 
-        # build A_lm = A + λ I, then mask inactive
-        if n_param != 2:
-            A_lm = A.copy()
-            for k in range(n_param):
-                A_lm[:, k, k] += lam
-                A_lm[:, k, k] += (~active[:, k]).astype(A.dtype)
-            mask2 = active[:, :, None] & active[:, None, :]
-            A_lm = A_lm * mask2
-            rhs = -(g * active)
-            delta = _np.linalg.solve(A_lm, rhs[..., None]).squeeze(-1)
+        A_mask, rhs = _build_masked_lm_system_numpy(A, g, active, lam)
+
+        if n_param == 2:
+            delta = _solve_2x2_spd_numpy(A_mask, rhs)
         else:
-            A_lm = A.copy()
-            mask2 = active[:, :, None] & active[:, None, :]
-            A_lm = A_lm * mask2
-            A_lm[:, 0, 0] += lam + (~active[:, 0]).astype(A.dtype)
-            A_lm[:, 1, 1] += lam + (~active[:, 1]).astype(A.dtype)
-            rhs = -(g * active)
-            delta = _solve_2x2_spd_numpy(A_lm, rhs)
-            delta *= active
+            delta = _np.linalg.solve(A_mask, rhs[..., None]).squeeze(-1)
+        delta *= active
 
-        u_trial = _snap_to_unit_box_bounds_numpy(_np.clip(u + delta, 0.0, 1.0), params.snap_eps)
+        u_trial = _np.clip(u + delta, 0.0, 1.0)
+        delta_eff = u_trial - u
 
-        # evaluate trial objective
         S_t = eval_S(u_trial, coeffs)
         r_t = S_t - points
         f_t = 0.5 * _np.einsum("mp,mp->m", r_t, r_t)
 
-        # predicted reduction
-        # pred = -(g·δ) - 0.5 δ^T A δ
-        g_dot_d = _np.einsum("mk,mk->m", g * active, delta)
-        Ad = _np.einsum("mkl,ml->mk", A, delta)
-        dAd = _np.einsum("mk,mk->m", delta, Ad)
-        pred = -g_dot_d - 0.5 * dAd
+        # Predicted reduction from the *damped* local LM model evaluated at the
+        # effective (possibly clipped) step.
+        g_mask = g * active
+        A_active = A * (active[:, :, None] & active[:, None, :]).astype(A.dtype)
+        g_dot_d = _np.einsum("mk,mk->m", g_mask, delta_eff)
+        Ad = _np.einsum("mkl,ml->mk", A_active, delta_eff)
+        dAd = _np.einsum("mk,mk->m", delta_eff, Ad)
+        d2 = _np.einsum("mk,mk->m", delta_eff, delta_eff)
+        pred = -(g_dot_d + 0.5 * dAd + 0.5 * lam * d2)
+
         act = f - f_t
-        ratio = _np.where(pred > 0, act / pred, 0.0)
-        accept = (act > 0) & (ratio > params.accept_ratio)
+        # ratio = _np.where(pred > 0.0, act / pred, -_np.inf)
+        pred_tol = 1e-14
+        pred_safe = _np.where(_np.isfinite(pred) & (pred > pred_tol), pred, _np.nan)
+        ratio = act / pred_safe
+        ratio = _np.where(_np.isfinite(ratio), ratio, _np.inf)
+
+        accept = (act > 0.0) & (ratio > params.accept_ratio)
 
         u_new = _np.where(accept[:, None], u_trial, u)
         lam_new = _np.where(accept, lam * params.lambda_down, lam * params.lambda_up)
         lam_new = _np.clip(lam_new, params.lambda_min, params.lambda_max)
 
-        g_norm = _np.linalg.norm(g * active, axis=1)
-        d_norm = _np.linalg.norm(delta, axis=1)
-        conv_new = (g_norm < params.tol_grad) | (d_norm < params.tol_step)
+        accepted_step_norm = _np.linalg.norm(_np.where(accept[:, None], delta_eff, 0.0), axis=1)
+        g_norm = _np.linalg.norm(g_mask, axis=1)
+        conv_new = (g_norm < params.tol_grad) | (accept & (accepted_step_norm < params.tol_step))
 
         u = _np.where(converged[:, None], u, u_new)
         lam = _np.where(converged, lam, lam_new)
@@ -589,8 +546,8 @@ def project_points_lm_numpy(
         if converged.all():
             break
 
-    residual = g_norm
-    return u, converged, lam, residual, iter_num
+    residual = g_norm # eval_S(u, coeffs) - points
+    return u, converged, lam, residual
 
 
 if __name__ == "__main__":

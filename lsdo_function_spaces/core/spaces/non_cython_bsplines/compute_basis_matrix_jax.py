@@ -26,11 +26,9 @@ def compute_basis_matrix_jax(us, degrees, knot_vectors, der_orders=None):
 
     for i in range(dim):
         p = degrees[i]
-        U = knot_vectors[i]
+        num_cp = len(knot_vectors[i]) - p - 1
+        U = jnp.asarray(knot_vectors[i])
         n = der_orders[i]
-
-        # number of control points in this dim
-        num_cp = len(U) - p - 1
         n_ctrls.append(num_cp)
 
         # find spans: shape (M,)

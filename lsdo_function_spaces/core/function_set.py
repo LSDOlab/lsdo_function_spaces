@@ -95,21 +95,7 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
 
 @dataclass
 class FunctionSet:
-    '''
-    Function class. This class is used to represent a function in a given function space. The function space is used to evaluate the function at
-    given coordinates, refit the function, and project points onto the function.
-
-    Attributes
-    ----------
-    functions : list[lfs.Function]
-        The functions that make up the function set.
-    function_names : list[str] = None
-        If they have names, the names of the functions in the function set.
-    name : str = None
-        The name of the function set.
-    space : lfs.FunctionSetSpace = None
-        The function set space that the function set is from. If None (recommended), the function set space will be inferred from the functions.
-    '''
+    """Representation of a composite set of functions (e.g., multi-patch surfaces)."""
     functions: dict[int,lfs.Function]
     function_names : dict[int,str] = None
     name : str = None
@@ -287,9 +273,9 @@ class FunctionSet:
             The parametric coordinates should be a numpy array of shape (num_parametric_dimensions,).
         parametric_derivative_orders : Optional[Union[Sequence[int], Sequence[Sequence[int,...]]]] = None -- shape=(num_points,num_parametric_dimensions)
             The order of the parametric derivatives to evaluate. If None, the function itself is evaluated.
-        plot : bool = False
+        plot : bool, optional
             Whether or not to plot the function with the points from the result of the evaluation.
-                non_csdl : bool = False
+        non_csdl : bool, optional
             If true, will run numpy computations instead of csdl computations, and return a numpy array.
 
         Returns
@@ -410,7 +396,10 @@ class FunctionSet:
             if len(value.shape) == 1:
                 value = value.reshape((-1,1))
             values.append(value)
-        values = csdl.vstack(values)
+        if len(values) == 1:
+            values = values[0]
+        elif len(values) > 1:
+            values = csdl.vstack(values)
         return values, parametric_coordinates
 
     def refit(self, new_function_spaces:dict[lfs.FunctionSpace]|lfs.FunctionSpace, indices_of_functions_to_refit:list[int]=None, 
@@ -472,7 +461,7 @@ class FunctionSet:
                 extrema=False, force_reprojection=False, priority_inds:Optional[list[int]]=None, priority_eps:float=1e-3,
                 grid_search_evaluation_cutoff:Optional[float]=None, grid_search_subtraction_cutoff:Optional[float]=None,
                 grid_search_density_cutoff:int=50, do_pickles:bool=True, use_line_search:bool=False) -> list[tuple[int, npt.NDArray[np.float64]]]:
-        '''
+        """
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
         points on the function that are closest to the points to project. The grid search density parameter controls the density of the grid search
@@ -493,11 +482,11 @@ class FunctionSet:
             The maximum number of Newton iterations.
         newton_tolerance : float = 1e-6
             The tolerance for the Newton iterations.
-        projection_tolerance : float = None
+        projection_tolerance : float, optional
             The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
-            using a finer grid search density parameter for the points that are not within the tolerance distance. 
-            NOTE: This is only for use when the points are within the geometry that they are being projected onto, or, if a direciton is
-             specified, the axis of the projection intersects the geometry.
+            using a finer grid search density parameter for the points that are not within the tolerance distance.
+            NOTE: This is only for use when the points are within the geometry that they are being projected onto, or, if a direction is
+            specified, the axis of the projection intersects the geometry.
         plot : bool = False
             Whether or not to plot the projection.
         extrema : bool = False
@@ -514,11 +503,11 @@ class FunctionSet:
             idk what this does
         grid_search_density_cutoff : int = 100
             The cutoff for the grid search density parameter. If the grid search density parameter exceeds this value during refinement,
-              the projection will be stopped.
+            the projection will be stopped.
             This is to prevent the projection from taking too long. If the projection is stopped, a warning will be printed.
-                use_line_search : bool = False
-                        If True, use Armijo backtracking for each Newton step of the underlying functions.
-        '''
+        use_line_search : bool = False
+            If True, use Armijo backtracking for each Newton step of the underlying functions.
+        """
         if num_workers is None:
             num_workers = lfs.num_workers
 
@@ -739,8 +728,10 @@ class FunctionSet:
             The indices of the functions in the function set with the given names.
         '''
         function_indices = []
+        names_keys = list(self.function_names.keys())
+        names_vals = list(self.function_names.values())
         for function_name in function_names:
-            function_indices.append([self.function_names.keys()][[self.function_names.values()].index(function_name)])
+            function_indices.append(names_keys[names_vals.index(function_name)])
         return function_indices
 
     def search_for_function_indices(self, search_strings:list[str], ignore_names:Optional[list[str]]=None) -> list[int]:
@@ -800,22 +791,24 @@ class FunctionSet:
         return subset
 
     def plot_but_good(self, opacity:float=1., color="777777", color_map:str='jet', surface_texture:str="", show:bool=True, grid_n=25):
-        '''
-        Plots the function set.
+        """
+        Plots the function set as a combined mesh.
 
         Parameters
-        -----------
-        opactity : float = 1.
+        ----------
+        opacity : float, optional
             The opacity of the plot. 0 is fully transparent and 1 is fully opaque.
-        color : lfs.FunctionSet = None
-            The FunctionSet to use to color the B-spline as.
-        color_map : str = 'jet'
-            The color map to use if the color is a function.
-        surface_texture : str = ""
-            The surface texture to determine how light bounces off the surface.
-            See 
-
-        '''
+        color : str or lfs.FunctionSet, optional
+            Color hex string or FunctionSet for scalar field coloring.
+        color_map : str, optional
+            Colormap name when coloring by function values.
+        surface_texture : str, optional
+            Surface texture appearance preset.
+        show : bool, optional
+            Whether to display the plot.
+        grid_n : int, optional
+            Sampling grid resolution.
+        """
         from lsdo_function_spaces.utils.plotting_functions import get_surface_mesh
 
         vertices = []
@@ -854,11 +847,11 @@ class FunctionSet:
     def plot(self, camera:Optional[dict[str,tuple[float]]]=None, screenshot:str="",title:Optional[str]=None, interactive:bool=True, point_types:list[str]=['evaluated_points'], plot_types:list[str]=['function'],
               opacity:float=1., color:Union[str,lfs.FunctionSet]='#00629B', color_map:str='jet', surface_texture:str="",
               line_width:float=3., additional_plotting_elements:list=[], show:bool=True) -> list:
-        '''
+        """
         Plots the function set.
 
         Parameters
-        -----------
+        ----------
         points_type : list = ['evaluated_points']
             The type of points to be plotted. {evaluated_points, coefficients}
         plot_types : list = ['function']
@@ -881,7 +874,7 @@ class FunctionSet:
         -------
         plotting_elements : list
             The plotting elements that were plotted.
-        '''
+        """
         import lsdo_function_spaces.utils.plotting_functions as pf
         # Then there must be a discrete index so loop over subfunctions and plot them
         # Flatten nested lists to handle cases where users pass [plot_points_result]

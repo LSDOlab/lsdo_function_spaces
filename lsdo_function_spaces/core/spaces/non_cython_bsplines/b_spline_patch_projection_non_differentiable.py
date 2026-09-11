@@ -1,6 +1,6 @@
 import jax 
 import jax.numpy as jnp
-from funspace.core.spaces.marius_b_spline_files.compute_basis_matrix_jax import evaluate_b_spline_jax
+from lsdo_function_spaces.core.spaces.non_cython_bsplines.compute_basis_matrix_jax import evaluate_b_spline_jax
 
 def compute_projection_residual(
     point_in_space,

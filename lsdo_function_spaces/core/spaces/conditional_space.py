@@ -7,14 +7,17 @@ from typing import Union
 
 class ConditionalSpace(LinearFunctionSpace):
     """
-    Constant Function Space.
+    Conditional Function Space.
 
-    This function space represents a constant value in a parametric space.
+    This function space applies a user-defined condition predicate to
+    evaluate basis representations conditionally in parametric space.
 
     Parameters
     ----------
     num_parametric_dimensions : int
         The number of parametric dimensions.
+    condition : callable
+        Condition callable evaluated on coordinates.
     """
 
     def __init__(self, num_parametric_dimensions:int, condition:callable):
