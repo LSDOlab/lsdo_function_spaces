@@ -36,7 +36,7 @@ jobs:
 
     - name: Run unit tests
       run: |
-        xvfb-run --auto-servernum pytest -v tests/
+        xvfb-run --auto-servernum python -m pytest -v tests/
 
     - name: Verify documentation build
       if: matrix.python-version == '3.11'

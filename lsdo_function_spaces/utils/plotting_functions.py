@@ -85,7 +85,7 @@ def show_plot(plotting_elements:list, title:str,  axes:bool=True, view_up:str="z
     interactive : bool = True
         A boolean on whether the plot is interactive or not.
     '''
-    plotter = pv.Plotter()
+    plotter = pv.Plotter(off_screen=pv.OFF_SCREEN)
     if axes:
         plotter.show_axes()
 

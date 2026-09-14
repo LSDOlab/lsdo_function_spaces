@@ -5,6 +5,23 @@ import multiprocessing
 __version__ = "1.0.0"
 num_workers = multiprocessing.cpu_count()
 
+# NumPy 2.x compatibility patch for CSDL_alpha SetVarIndex
+try:
+    import numpy as _np
+    from csdl_alpha.src.operations.set_get.setindex import SetVarIndex as _SetVarIndex
+
+    def _safe_compute_inline(self, x, y, *slice_args):
+        x_updated = x.copy()
+        if getattr(y, "size", None) == 1:
+            x_updated[self.slice.evaluate(*slice_args)] = y.item() if isinstance(y, _np.ndarray) else y
+        else:
+            x_updated[self.slice.evaluate(*slice_args)] = y
+        return x_updated
+
+    _SetVarIndex.compute_inline = _safe_compute_inline
+except Exception:
+    pass
+
 # Core representations
 from .core.function import Function
 from .core.function_set import FunctionSet
