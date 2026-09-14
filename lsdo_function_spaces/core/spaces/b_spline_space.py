@@ -247,7 +247,7 @@ class BSplineSpace(LinearFunctionSpace):
                     degrees=self.degree,
                     coefficients=cps,
                     para_coords=u0,
-                    knots=tuple([jnp.array(kv_i) for kv_i in self.knots]),
+                    knots=tuple(tuple(float(x) for x in kv_i) for kv_i in self.knots),
                 ),
                 in_axes=(0, 0, None),
             )

@@ -1138,7 +1138,7 @@ class Function:
                     mesh_grid_input = []
                     for dimension_index in range(self.space.num_parametric_dimensions):
                         mesh_grid_input.append(np.linspace(0., 1., self.coefficients.shape[dimension_index]))
-                    parametric_coordinates_tuple = np.meshgrid(*mesh_grid_input, indexing='ij')
+                    parametric_coordinates_tuple = list(np.meshgrid(*mesh_grid_input, indexing='ij'))
                     for dimensions_index in range(self.space.num_parametric_dimensions):
                         parametric_coordinates_tuple[dimensions_index] = parametric_coordinates_tuple[dimensions_index].reshape((-1,1))
                     parametric_coordinates = np.hstack(parametric_coordinates_tuple)

@@ -152,10 +152,8 @@ def compute_point_to_bspline_projection(
  
     para_coords = para_coords.reshape(n_dims, )
 
-    # Convert static, hashable knots (tuples of floats) to JAX arrays
-    knots = tuple(jnp.array(k) for k in knots)
-
-    # knots = tuple([knots[i] for i in range(n_dims)])
+    # Knots remain static, hashable tuples of floats for JIT subfunctions
+    # (compute_projection_residual and compute_projection_jacobian convert them internally)
  
     def body(state):
         i, para_coords, _, _, _, _, _ = state
@@ -209,12 +207,12 @@ def compute_point_to_bspline_projection(
 @partial(jax.jit, static_argnames=("degrees", "knots"))
 def res_fun_single(para_coords, point, coefficients, degrees=None, knots=None):
     """Compute the residual for a single point."""
-    return jax.jit(compute_projection_residual, static_argnums=(2, ))(
+    return compute_projection_residual(
         point_in_space=point,
         para_coords=para_coords,
         degrees=degrees,
         coefficients=coefficients,
-    knot_vectors=knots,
+        knot_vectors=knots,
     )[0]
 
 @partial(jax.jit, static_argnames=("degrees", "knots"))
