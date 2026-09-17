@@ -674,8 +674,11 @@ class FunctionSet:
         
         name_space_dict_file_path = Path(name_space_file_path)
         if name_space_dict_file_path.is_file():
-            with open(name_space_file_path, 'rb') as handle:
-                name_space_dict = pickle.load(handle)
+            try:
+                with open(name_space_file_path, 'rb') as handle:
+                    name_space_dict = pickle.load(handle)
+            except Exception:
+                name_space_dict = {}
         else:
             Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
             name_space_dict = {}
@@ -683,13 +686,15 @@ class FunctionSet:
         if long_name_space in name_space_dict.keys() and not force_reprojection:
             short_name_space = name_space_dict[long_name_space]
             saved_projections_file = projections_folder + f'/{short_name_space}.pickle'
-            with open(saved_projections_file, 'rb') as handle:
-                parametric_coordinates = pickle.load(handle)
-                return parametric_coordinates
-        else:
-            Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
+            try:
+                with open(saved_projections_file, 'rb') as handle:
+                    parametric_coordinates = pickle.load(handle)
+                    return parametric_coordinates
+            except Exception:
+                pass
 
-            return name_space_dict, long_name_space
+        Path("stored_files/projections").mkdir(parents=True, exist_ok=True)
+        return name_space_dict, long_name_space
 
     def set_coefficients(self, coefficients:Sequence[csdl.Variable], function_indices:Optional[Sequence[int]]=None) -> None:
         '''
