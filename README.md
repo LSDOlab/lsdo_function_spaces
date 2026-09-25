@@ -7,6 +7,8 @@
 
 **lsdo_function_spaces** is a pure-Python library for constructing continuous, high-dimensional, differentiable function representations (B-splines, tensor-product splines, scattered data spaces, and multivariate polynomials) tailored for gradient-based Multidisciplinary Design Optimization (MDO) and scientific computing.
 
+> 📖 **Online Documentation**: [https://lsdo-function-spaces.readthedocs.io](https://lsdo-function-spaces.readthedocs.io/en/latest/)
+
 Developed by the [Large-Scale Design Optimization (LSDO) Lab](https://lsdo.eng.ucsd.edu/) at the University of California, San Diego.
 
 ---
@@ -133,8 +135,10 @@ xvfb-run --auto-servernum pytest -v tests/
 ---
 
 ## Documentation
-
-Build the HTML documentation locally:
+ 
+Official documentation, API references, tutorials, and mathematical foundations are hosted online at **[lsdo-function-spaces.readthedocs.io](https://lsdo-function-spaces.readthedocs.io/en/latest/)**.
+ 
+To build the HTML documentation locally:
 ```sh
 sphinx-build -b html docs docs/_build/html -q -W
 ```
