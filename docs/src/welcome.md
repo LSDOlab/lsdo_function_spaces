@@ -18,14 +18,14 @@ It integrates directly with [CSDL](https://github.com/LSDOlab/csdl) and CSDL Alp
 
 ---
 
-## Cite us
+<!-- ## Cite us
 ```none
 @article{lsdo_function_spaces,
     author  = {Andrew Fletcher},
     title   = {lsdo_function_spaces: Continuous Function Spaces and Differentiable B-Spline Representations for MDO},
     year    = {2024}
 }
-```
+``` -->
 
 ```{toctree}
 :maxdepth: 1
