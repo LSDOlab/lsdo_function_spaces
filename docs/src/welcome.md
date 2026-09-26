@@ -16,17 +16,6 @@ It integrates directly with [CSDL](https://github.com/LSDOlab/csdl) and CSDL Alp
 - **Generalized Function Spaces**: Inverse Distance Weighting (IDW), Radial Basis Functions (RBF), polynomial spaces, and linear triangulations.
 - **Analytic Sensitivities & CSDL Alpha**: First-class computational graph integration supporting forward and reverse Vector-Jacobian Products (VJPs) for seamless gradient propagation.
 
----
-
-## Cite us
-```none
-@article{lsdo_function_spaces,
-    author  = {Andrew Fletcher},
-    title   = {lsdo_function_spaces: Continuous Function Spaces and Differentiable B-Spline Representations for MDO},
-    year    = {2024}
-}
-```
-
 ```{toctree}
 :maxdepth: 1
 :hidden:
