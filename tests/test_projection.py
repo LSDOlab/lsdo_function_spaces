@@ -208,4 +208,32 @@ def test_directional_projection_two_stage_polish():
     assert perp_dist < 1e-6
 
 
+def test_vectorized_projection_with_line_search():
+    """Verify that multi-point batch projection with use_line_search=True converges for all points."""
+    space = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(2, 2), coefficients_shape=(4, 4))
+    x = np.linspace(0.0, 10.0, 4)
+    y = np.linspace(0.0, 10.0, 4)
+    xx, yy = np.meshgrid(x, y, indexing="ij")
+    zz = 0.1 * xx**2 + 0.05 * yy**2
+    ctrl = np.stack((xx, yy, zz), axis=-1)
+    fn = lfs.Function(space=space, coefficients=ctrl, name="test_surface_line_search")
+
+    # Sample a batch of 20 evaluation points on the surface
+    u_vals = np.linspace(0.1, 0.9, 20)
+    v_vals = np.linspace(0.1, 0.9, 20)
+    true_uv = np.column_stack([u_vals, v_vals])
+    eval_pts = fn.evaluate(true_uv, non_csdl=True)
+
+    # Project with use_line_search=True
+    proj_uv = fn.project(eval_pts, use_line_search=True, do_pickles=False)
+    np.testing.assert_allclose(proj_uv, true_uv, atol=1e-4)
+
+    # Verify that max distance is near machine precision across ALL points in the batch
+    re_eval = fn.evaluate(proj_uv, non_csdl=True)
+    dists = np.linalg.norm(re_eval - eval_pts, axis=1)
+    assert np.max(dists) < 1e-4
+
+
+
+
 

@@ -661,53 +661,53 @@ class Function:
                             current_guess[index, indices_to_keep[i]] += delta
                             continue
 
-                    step_size = 1.0
-                    armijo_c1 = 1e-4
-                    backtracking_contraction = 0.9
-                    min_step_size = 1e-8
-                    current_objective = reduced_objective_values[i]
-                    directional_derivative = reduced_gradients[i].dot(delta)
+                        step_size = 1.0
+                        armijo_c1 = 1e-4
+                        backtracking_contraction = 0.9
+                        min_step_size = 1e-8
+                        current_objective = reduced_objective_values[i]
+                        directional_derivative = reduced_gradients[i].dot(delta)
 
-                    accepted_step = None
-                    trial_guess = current_guess[index].copy()
-                    line_search_iterations = 0
-                    for _ in range(50):
-                        line_search_iterations += 1
-                        trial_guess[:] = current_guess[index]
-                        trial_guess[indices_to_keep[i]] += step_size * delta
-                        trial_guess = np.clip(trial_guess, 0., 1.)
+                        accepted_step = None
+                        trial_guess = current_guess[index].copy()
+                        line_search_iterations = 0
+                        for _ in range(50):
+                            line_search_iterations += 1
+                            trial_guess[:] = current_guess[index]
+                            trial_guess[indices_to_keep[i]] += step_size * delta
+                            trial_guess = np.clip(trial_guess, 0., 1.)
 
-                        trial_function_value = self.evaluate(
-                            parametric_coordinates=trial_guess.reshape(1, -1),
-                            coefficients=self.coefficients.value,
-                            non_csdl=True,
-                        ).reshape(num_physical_dimensions)
-                        trial_displacement = points[index] - trial_function_value
+                            trial_function_value = self.evaluate(
+                                parametric_coordinates=trial_guess.reshape(1, -1),
+                                coefficients=self.coefficients.value,
+                                non_csdl=True,
+                            ).reshape(num_physical_dimensions)
+                            trial_displacement = points[index] - trial_function_value
 
-                        if direction is None:
-                            trial_objective = trial_displacement.dot(trial_displacement)
-                        else:
-                            trial_objective = ((1 + rho) * trial_displacement.dot(trial_displacement)
-                                               - (direction.dot(trial_displacement))**2)
+                            if direction is None:
+                                trial_objective = trial_displacement.dot(trial_displacement)
+                            else:
+                                trial_objective = ((1 + rho) * trial_displacement.dot(trial_displacement)
+                                                   - (direction.dot(trial_displacement))**2)
 
-                        if trial_objective <= current_objective + armijo_c1 * step_size * directional_derivative:
-                            total_line_search_iterations += line_search_iterations
-                            max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                            if trial_objective <= current_objective + armijo_c1 * step_size * directional_derivative:
+                                total_line_search_iterations += line_search_iterations
+                                max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                                accepted_step = trial_guess.copy()
+                                break
+
+                            step_size *= backtracking_contraction
+                            if step_size < min_step_size:
+                                total_line_search_iterations += line_search_iterations
+                                max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                                accepted_step = trial_guess.copy()
+                                break
+
+                        if accepted_step is None:
                             accepted_step = trial_guess.copy()
-                            break
 
-                        step_size *= backtracking_contraction
-                        if step_size < min_step_size:
-                            total_line_search_iterations += line_search_iterations
-                            max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
-                            accepted_step = trial_guess.copy()
-                            break
-
-                    if accepted_step is None:
-                        accepted_step = trial_guess.copy()
-
-                    # Update the initial guess
-                    current_guess[index] = accepted_step
+                        # Update the initial guess
+                        current_guess[index] = accepted_step
 
                 # If any of the coordinates are outside the bounds, set them to the bounds
                 current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
