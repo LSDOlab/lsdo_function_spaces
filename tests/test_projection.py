@@ -184,3 +184,28 @@ def test_projection_operation_csdl():
     assert d_uv is not None
 
 
+def test_directional_projection_two_stage_polish():
+    """Verify that directional projection with two-stage polish achieves exact line intersection."""
+    s1 = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1, 1), coefficients_shape=(2, 2))
+    ctrl1 = np.array([
+        [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+    ])
+    fn = lfs.Function(space=s1, coefficients=ctrl1, name="patch_dir")
+
+    # Ray from [0.1, 0.3, 2.0] along direction [0.2, 0.2, -1.0]
+    # At z=0, t=2.0 => x = 0.1 + 2*0.2 = 0.5, y = 0.3 + 2*0.2 = 0.7
+    query = np.array([[0.1, 0.3, 2.0]])
+    direction = np.array([0.2, 0.2, -1.0])
+
+    uv = fn.project(query, direction=direction, do_pickles=False)
+    np.testing.assert_allclose(uv[0], [0.5, 0.7], atol=1e-5)
+
+    eval_pt = fn.evaluate(uv, non_csdl=True)
+    d_norm = direction / np.linalg.norm(direction)
+    diff = eval_pt - query
+    perp_dist = np.linalg.norm(np.cross(diff, d_norm))
+    assert perp_dist < 1e-6
+
+
+

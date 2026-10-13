@@ -171,35 +171,40 @@ def _detect_knot_fields(fields: List[str]) -> Tuple[List[int], List[int], List[f
     OpenVSP typically uses indices 8..11, but exporters vary. We look for
     two int-lists followed by two float-lists among the parenthesized fields.
     """
-    # First try the OpenVSP expected slots
+    # First try the standard ISO 10303 / OpenVSP expected slots
     try:
         u_mults = _parse_int_list(fields[8])
         v_mults = _parse_int_list(fields[9])
         u_knots = _parse_float_list(fields[10])
         v_knots = _parse_float_list(fields[11])
-        if len(u_mults) == len(u_knots) and len(v_mults) == len(v_knots):
+        if len(u_mults) == len(u_knots) and len(v_mults) == len(v_knots) and len(u_mults) > 0 and len(v_mults) > 0:
             return u_mults, v_mults, u_knots, v_knots
     except Exception:
         pass
 
-    # Otherwise scan for pattern: int list, int list, float list, float list
-    parenth_idxs = [i for i, f in enumerate(fields) if f.strip().startswith('(')]
+    # Otherwise scan for pattern: int list, int list, float list, float list.
+    # Exclude control point grids or reference rows containing '#'.
+    parenth_idxs = [i for i, f in enumerate(fields) if f.strip().startswith('(') and '#' not in f]
     parsed_int: Dict[int, List[int]] = {}
     parsed_float: Dict[int, List[float]] = {}
 
     for i in parenth_idxs:
         txt = fields[i]
-        # Heuristic: if contains '.' or 'E'/'D' treat as float list
-        if any(c in txt for c in ['.', 'E', 'e', 'D', 'd']):
+        try:
+            f_list = _parse_float_list(txt)
+            if f_list:
+                parsed_float[i] = f_list
+        except Exception:
+            pass
+
+        # If it doesn't contain a decimal point or float exponent, it's also a valid integer multiplicity list
+        if not any(c in txt for c in ['.', 'E', 'e', 'D', 'd']):
             try:
-                parsed_float[i] = _parse_float_list(txt)
+                i_list = _parse_int_list(txt)
+                if i_list:
+                    parsed_int[i] = i_list
             except Exception:
-                continue
-        else:
-            try:
-                parsed_int[i] = _parse_int_list(txt)
-            except Exception:
-                continue
+                pass
 
     # Find int,int,float,float sequence
     idxs = sorted(parenth_idxs)
@@ -219,7 +224,7 @@ def _detect_knot_fields(fields: List[str]) -> Tuple[List[int], List[int], List[f
                     v_mults = parsed_int[b]
                     u_knots = parsed_float[c]
                     v_knots = parsed_float[d]
-                    if len(u_mults) == len(u_knots) and len(v_mults) == len(v_knots):
+                    if len(u_mults) == len(u_knots) and len(v_mults) == len(v_knots) and len(u_mults) > 0 and len(v_mults) > 0:
                         return u_mults, v_mults, u_knots, v_knots
 
     raise ValueError('Could not locate knot and multiplicity fields in B_SPLINE_SURFACE_WITH_KNOTS.')
@@ -280,6 +285,15 @@ def _space_key(deg_u: int, deg_v: int, u_mults: List[int], v_mults: List[int], u
     return hashlib.md5(payload).hexdigest()
 
 
+def _ensure_active_recorder():
+    """Ensure an active CSDL recorder exists so Variable instantiation succeeds."""
+    try:
+        csdl.get_current_recorder()
+    except Exception:
+        rec = csdl.Recorder(inline=True)
+        rec.start()
+
+
 # -----------------------------------------------------------------------------
 # Stored import helper
 # -----------------------------------------------------------------------------
@@ -300,6 +314,8 @@ def _check_if_load_stored_import(
 
     if not path.is_file():
         return None
+
+    _ensure_active_recorder()
 
     with open(file_path, 'rb') as handle:
         function_set = pickle.load(handle)
@@ -352,8 +368,12 @@ def import_file(
     # Quick existence check
     with open(file_name, 'r') as f:
         content = f.read(200000)  # partial read for quick check
+        if 'RATIONAL_B_SPLINE_SURFACE' in content:
+            raise NotImplementedError('Rational (NURBS) surfaces are not supported; weights would be ignored.')
         if 'B_SPLINE_SURFACE_WITH_KNOTS' not in content:
             raise ValueError('No B_SPLINE_SURFACE_WITH_KNOTS found in file (or file not compatible).')
+
+    _ensure_active_recorder()
 
     # Stored import
     loaded = _check_if_load_stored_import(file_name, name=name, parallelize=parallelize)

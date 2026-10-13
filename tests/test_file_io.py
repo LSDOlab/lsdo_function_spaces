@@ -175,3 +175,39 @@ END-ISO-10303-21;
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
+
+
+def test_detect_knot_fields_integer_knots_fallback():
+    """Test detecting knot fields when knots are formatted as integers in non-standard field slots."""
+    from lsdo_function_spaces.utils.file_io import _detect_knot_fields
+    fields = [
+        'test', '1', '1', '((#1,#2))', '.EXTRA.',
+        '.UNSPECIFIED.', '.F.', '.F.', '.F.',
+        '(2, 2)', '(2, 2)', '(0, 1)', '(0, 1)', '.UNSPECIFIED.'
+    ]
+    u_mults, v_mults, u_knots, v_knots = _detect_knot_fields(fields)
+    assert u_mults == [2, 2]
+    assert v_mults == [2, 2]
+    assert u_knots == [0.0, 1.0]
+    assert v_knots == [0.0, 1.0]
+
+
+def test_import_file_rational_rejected():
+    """Test that rational (NURBS) surfaces raise NotImplementedError."""
+    step_content = """ISO-10303-21;
+DATA;
+#20 = RATIONAL_B_SPLINE_SURFACE();
+#30 = B_SPLINE_SURFACE_WITH_KNOTS('rat', 1, 1, ((#1, #2)), .UNSPECIFIED., .F., .F., .F., (2, 2), (2, 2), (0.0, 1.0), (0.0, 1.0), .UNSPECIFIED.);
+ENDSEC;
+"""
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".stp", delete=False) as f:
+        f.write(step_content)
+        temp_path = f.name
+
+    try:
+        with pytest.raises(NotImplementedError, match="Rational"):
+            import_file(temp_path)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+

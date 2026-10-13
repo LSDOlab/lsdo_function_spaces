@@ -15,7 +15,7 @@ from scipy.spatial import cKDTree
 
 import lsdo_function_spaces as lfs
 from lsdo_function_spaces.core.function_space import LinearFunctionSpace
-from lsdo_function_spaces.core.spaces.non_cython_bsplines.b_spline_csdl_custom_ops import (
+from lsdo_function_spaces.core.spaces.non_cython_bsplines.b_spline_csdl_custom_ops_v2 import (
     BasisMatrixCustomOp,
     BSplineEvalCustomOp,
 )
