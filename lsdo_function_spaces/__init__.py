@@ -2,7 +2,7 @@
 
 import multiprocessing
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 num_workers = multiprocessing.cpu_count()
 
 # NumPy 2.x compatibility patch for CSDL_alpha SetVarIndex

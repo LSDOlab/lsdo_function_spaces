@@ -30,6 +30,8 @@ from typing import Union, Optional, Sequence
 import lsdo_function_spaces as lfs
 from lsdo_function_spaces.utils.internal_utilities import get_projection_squared_distances
 
+# Maximum elements in float64 arrays (~8 GB RAM) before automatic batching / chunking
+MAX_GRID_SEARCH_MEMORY_ELEMENTS = 1_000_000_000
 
 
 class Function:
@@ -280,12 +282,12 @@ class Function:
         new_function = Function(space=new_function_space, coefficients=coefficients)
         return new_function
 
-    def project(self, points:np.ndarray, direction:np.ndarray=None, grid_search_density_parameter:int=1, 
-                max_newton_iterations:int=100, newton_tolerance:float=1e-12, projection_tolerance:float=None,
-                plot:bool=False, force_reproject:bool=False, 
+    def project(self, points:np.ndarray, direction:np.ndarray=None,
+                use_line_search:bool=False, projection_tolerance:float=None,
+                grid_search_density_parameter:int=1, max_newton_iterations:int=100,
+                newton_tolerance:float=1e-12, plot:bool=False, force_reproject:bool=False, 
                 grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                do_pickles=True, grid_search_density_cutoff=50, verbose:bool=False,
-                use_line_search:bool=False) -> csdl.Variable:
+                do_pickles=True, grid_search_density_cutoff=50, verbose:bool=False) -> csdl.Variable:
         '''
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -301,34 +303,32 @@ class Function:
             The points to project onto the function.
         direction : np.ndarray = None -- shape=(num_parametric_dimensions,)
             The direction of the projection.
+        use_line_search : bool = False
+            If True, use Armijo backtracking for each Newton step. If False, apply the stabilized Newton step directly.
+        projection_tolerance : float = None
+            The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
+            using a finer grid search density parameter for the points that are not within the tolerance distance. 
+            NOTE: This is only for use when the points are within the geometry that they are being projected onto, or, if a direction is provided,
+            the axis defined by the direction intersects the geometry.
         grid_search_density_parameter : int = 1
             The density of the grid search used to find the initial guess for the Newton iterations.
         max_newton_iterations : int = 100
             The maximum number of Newton iterations.
         newton_tolerance : float = 1e-6
             The tolerance for the Newton iterations.
-        projection_tolerance : float = None
-            The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
-            using a finer grid search density parameter for the points that are not within the tolerance distance. 
-            NOTE: This is only for use when the points are within the geometry that they are being projected onto, or, if a direction is provided,
-            the axis defined by the direction intersects the geometry.
         plot : bool = False
             Whether or not to plot the projection.
         force_reproject : bool = False
             If True, the projection will be recomputed even if it has already been computed and saved to a file.
         grid_search_evaluation_cutoff : int = None
-            The cutoff for the number of points to evaluate in the grid search. If the number of points is greater than this, the grid search
-            will be evaluated in sections. If None, no bunching will be done.
+            The cutoff for the number of points to evaluate in the grid search. If None, defaults to ~8 GB RAM limit (10^9 elements).
         grid_search_subtraction_cutoff : int = None
-            The cutoff for the number of points to subtract in the grid search. If the number of points is greater than this, the grid search
-            will be subtracted in sections. If None, no bunching will be done.
+            The cutoff for the number of point-grid pairs during grid search. If None, defaults to ~8 GB RAM limit (10^9 elements).
         do_pickles : bool = True
             If True, the projection will be saved to a file. The file will be saved in the stored_files/projections directory.
         grid_search_density_cutoff : int = 50
             The cutoff for the grid search density during refinement. If the grid search density is greater than this, the refinement will be
             terminated and a warning will be printed.
-        use_line_search : bool = False
-            If True, use Armijo backtracking for each Newton step. If False, apply the stabilized Newton step directly.
         '''
         if isinstance(points, csdl.Variable):
             points = points.value
@@ -343,12 +343,16 @@ class Function:
                 parametric_coordinates = output
 
                 if projection_tolerance is not None:
-                    parametric_coordinates = self.refine_projection(points, parametric_coordinates, direction,
-                                                                    grid_search_density_parameter, max_newton_iterations,
-                                                                    newton_tolerance, projection_tolerance, 
-                                                                    grid_search_evaluation_cutoff, grid_search_subtraction_cutoff,
-                                                                    do_pickles=do_pickles, grid_search_density_cutoff=grid_search_density_cutoff,
-                                                                    use_line_search=use_line_search)
+                    parametric_coordinates = self.refine_projection(points, parametric_coordinates, direction=direction,
+                                                                    use_line_search=use_line_search,
+                                                                    projection_tolerance=projection_tolerance,
+                                                                    initial_grid_search_density_parameter=grid_search_density_parameter,
+                                                                    max_newton_iterations=max_newton_iterations,
+                                                                    newton_tolerance=newton_tolerance,
+                                                                    grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
+                                                                    grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,
+                                                                    do_pickles=do_pickles,
+                                                                    grid_search_density_cutoff=grid_search_density_cutoff)
 
                 if plot:
                     projection_results = self.evaluate(parametric_coordinates).value
@@ -364,6 +368,9 @@ class Function:
         num_physical_dimensions = points.shape[-1]
 
         points = points.reshape((-1, num_physical_dimensions))
+        if direction is not None:
+            direction = np.asarray(direction, dtype=float)
+            direction = direction / np.linalg.norm(direction)
 
         # grid_search_resolution = 10*grid_search_density_parameter//self.space.num_parametric_dimensions + 1
         if not hasattr(self, '_grid_searches'):
@@ -387,14 +394,15 @@ class Function:
             # cutoff_size = 5.e6
             if verbose:
                 print('grid search evaluation size: ', num_grid_points)
-            if grid_search_evaluation_cutoff is not None and num_grid_points > grid_search_evaluation_cutoff:
-                num_sections = int(np.ceil(num_grid_points/grid_search_evaluation_cutoff))
-                section_size = int(np.ceil(num_grid_points/num_sections))
+            eval_cutoff = grid_search_evaluation_cutoff if grid_search_evaluation_cutoff is not None else MAX_GRID_SEARCH_MEMORY_ELEMENTS
+            if num_grid_points > eval_cutoff:
+                num_sections = int(np.ceil(num_grid_points / eval_cutoff))
+                section_size = int(np.ceil(num_grid_points / num_sections))
                 grid_search_values = np.zeros((num_grid_points, self.coefficients.shape[-1]))
                 start_index = 0
                 for i in range(num_sections):
                     # print(i, '/', num_sections)
-                    end_index = start_index + section_size
+                    end_index = min(start_index + section_size, num_grid_points)
                     grid_search_values[start_index:end_index] = self.evaluate(parametric_coordinates=parametric_grid_search[start_index:end_index],
                                                                               coefficients=self.coefficients.value, non_csdl=True)
                     start_index = end_index
@@ -413,50 +421,33 @@ class Function:
         if verbose:
             print('grid search subtraction size: ', expanded_points_size)
         grid_search_start_time = perf_counter()
-        if grid_search_subtraction_cutoff is not None and expanded_points_size > grid_search_subtraction_cutoff:
-            # grid search sections of points at a time
-            num_sections = int(np.ceil(expanded_points_size/grid_search_subtraction_cutoff))
-            section_size = int(np.ceil(points.shape[0]/num_sections))
+        def _compute_closest_grid_indices(pts_chunk, g_vals, dir_vec=None):
+            pts_sq = np.sum(pts_chunk**2, axis=-1, keepdims=True)
+            g_sq = np.sum(g_vals**2, axis=-1, keepdims=True)
+            dist_sq = np.maximum(pts_sq - 2.0 * (pts_chunk @ g_vals.T) + g_sq.T, 0.0)
+            if dir_vec is None:
+                return np.argmin(dist_sq, axis=1)
+            else:
+                rho = 1e-3
+                s_dot_d = g_vals @ dir_vec
+                x_dot_d = pts_chunk @ dir_vec
+                dist_along = s_dot_d[None, :] - x_dot_d[:, None]
+                dist_from_sq = (1.0 + rho) * dist_sq - dist_along**2
+                return np.argmin(dist_from_sq, axis=1)
+
+        sub_cutoff = grid_search_subtraction_cutoff if grid_search_subtraction_cutoff is not None else MAX_GRID_SEARCH_MEMORY_ELEMENTS
+        if expanded_points_size > sub_cutoff:
+            num_sections = int(np.ceil(expanded_points_size / sub_cutoff))
+            section_size = int(np.ceil(points.shape[0] / num_sections))
             closest_point_indices = np.zeros((points.shape[0],), dtype=int)
             for i in range(num_sections):
-                # print(i, '/', num_sections)
-                start_index = i*section_size
-                end_index = min((i+1)*section_size, points.shape[0])
-                points_expanded = np.repeat(points[start_index:end_index,np.newaxis,:], grid_search_values.shape[0], axis=1)
-                grid_search_displacements = grid_search_values - points_expanded
-                grid_search_distances = np.linalg.norm(grid_search_displacements, axis=2)
-
-                # Perform a grid search
-                if direction is None:
-                    closest_point_indices[start_index:end_index] = np.argmin(grid_search_distances, axis=1)
-                else:
-                    direction = direction/np.linalg.norm(direction)
-                    rho = 1e-3
-                    grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
-                    grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
-                    closest_point_indices[start_index:end_index] = np.argmin(grid_search_distances_from_axis_squared, axis=1)
+                start_index = i * section_size
+                end_index = min((i + 1) * section_size, points.shape[0])
+                closest_point_indices[start_index:end_index] = _compute_closest_grid_indices(
+                    points[start_index:end_index], grid_search_values, direction
+                )
         else:
-            points_expanded = np.repeat(points[:,np.newaxis,:], grid_search_values.shape[0], axis=1)
-            grid_search_displacements = grid_search_values - points_expanded
-            grid_search_distances = np.linalg.norm(grid_search_displacements, axis=2)
-
-            # Perform a grid search
-            if direction is None:
-                # If no direction is provided, the projection will find the points on the function that are closest to the points to project.
-                # The grid search will be used to find the initial guess for the Newton iterations
-                
-                # Find closest point on function to each point to project
-                # closest_point_indices = np.argmin(np.linalg.norm(grid_search_values - points, axis=1))
-                closest_point_indices = np.argmin(grid_search_distances, axis=1)
-
-            else:
-                # If a direction is provided, the projection will find the points on the function that are closest to the axis defined by the direction.
-                # The grid search will be used to find the initial guess for the Newton iterations
-                direction = direction/np.linalg.norm(direction)
-                rho = 1e-3
-                grid_search_distances_along_axis = np.dot(grid_search_displacements, direction)
-                grid_search_distances_from_axis_squared = (1 + rho)*grid_search_distances**2 - grid_search_distances_along_axis**2
-                closest_point_indices = np.argmin(grid_search_distances_from_axis_squared, axis=1)
+            closest_point_indices = _compute_closest_grid_indices(points, grid_search_values, direction)
 
         grid_search_time = perf_counter() - grid_search_start_time
         if verbose:
@@ -532,175 +523,194 @@ class Function:
         #         # If any of the coordinates are outside the bounds, set them to the bounds
         #         current_guess[i] = np.clip(current_guess[i], 0., 1.)
 
-        # Experimental implementation that does all the Newton optimizations at once to vectorize many of the computations
+        # Vectorized Newton optimization (supports two-stage solve with polish when projecting along a direction)
         current_guess = initial_guess.copy()
-        points_left_to_converge = np.arange(points.shape[0])
         newton_start_time = perf_counter()
         total_line_search_iterations = 0
         max_line_search_iterations = 0
-        for j in range(max_newton_iterations):
-            # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
-            function_values = self.evaluate(parametric_coordinates=current_guess[points_left_to_converge], coefficients=self.coefficients.value, non_csdl=True)
-            displacements = (points[points_left_to_converge] - function_values).reshape(points_left_to_converge.shape[0], num_physical_dimensions)
-            
-            d_displacement_d_parametric = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, self.space.num_parametric_dimensions))
-            d2_displacement_d_parametric2 = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, 
-                                                      self.space.num_parametric_dimensions, self.space.num_parametric_dimensions))
 
-            for k in range(self.space.num_parametric_dimensions):
-                parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,), dtype=int)
-                parametric_derivative_orders[k] = 1
-                # d_displacement_d_parametric[:, :, k] = -np.tensordot(
-                #     self.space.compute_basis_matrix(current_guess, parametric_derivative_orders=parametric_derivative_orders),
-                #     self.coefficients.value.reshape(-1, num_physical_dimensions), axes=[1,0])
-                d_displacement_d_parametric[:, :, k] = -self.space.compute_basis_matrix(current_guess[points_left_to_converge], 
-                                                                                        parametric_derivative_orders=parametric_derivative_orders).dot(
-                                                                    self.coefficients.value.reshape(-1, num_physical_dimensions))
-                    # NOTE on indices: i=points, j=coefficients, k=physical dimensions
+        rho_stages = [None] if direction is None else [1e-3, 1e-9]
 
-                for m in range(self.space.num_parametric_dimensions):
+        for stage_idx, rho in enumerate(rho_stages):
+            points_left_to_converge = np.arange(points.shape[0])
+            stage_max_iters = max_newton_iterations if stage_idx == 0 else min(max_newton_iterations, 25)
+            for j in range(stage_max_iters):
+                if len(points_left_to_converge) == 0:
+                    break
+                # Perform B-spline evaluations needed for gradient and hessian (0th, 1st, and 2nd order derivatives needed)
+                function_values = self.evaluate(parametric_coordinates=current_guess[points_left_to_converge], coefficients=self.coefficients.value, non_csdl=True)
+                displacements = (points[points_left_to_converge] - function_values).reshape(points_left_to_converge.shape[0], num_physical_dimensions)
+                
+                d_displacement_d_parametric = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, self.space.num_parametric_dimensions))
+                d2_displacement_d_parametric2 = np.zeros((points_left_to_converge.shape[0], num_physical_dimensions, 
+                                                          self.space.num_parametric_dimensions, self.space.num_parametric_dimensions))
+
+                for k in range(self.space.num_parametric_dimensions):
                     parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,), dtype=int)
-                    if m == k:
-                        parametric_derivative_orders[m] = 2
-                    else:
-                        parametric_derivative_orders[k] = 1
-                        parametric_derivative_orders[m] = 1
-                    # d2_displacement_d_parametric2[:, :, k, m] = -np.einsum(
+                    parametric_derivative_orders[k] = 1
+                    # d_displacement_d_parametric[:, :, k] = -np.tensordot(
                     #     self.space.compute_basis_matrix(current_guess, parametric_derivative_orders=parametric_derivative_orders),
-                    #     self.coefficients.value.reshape((-1, num_physical_dimensions)), 'ij,jk->ik')
-                    d2_displacement_d_parametric2[:, :, k, m] = -self.space.compute_basis_matrix(current_guess[points_left_to_converge], 
-                                                                            parametric_derivative_orders=parametric_derivative_orders).dot(
-                                                                        self.coefficients.value.reshape((-1, num_physical_dimensions)))
+                    #     self.coefficients.value.reshape(-1, num_physical_dimensions), axes=[1,0])
+                    d_displacement_d_parametric[:, :, k] = -self.space.compute_basis_matrix(current_guess[points_left_to_converge], 
+                                                                                            parametric_derivative_orders=parametric_derivative_orders).dot(
+                                                                        self.coefficients.value.reshape(-1, num_physical_dimensions))
                         # NOTE on indices: i=points, j=coefficients, k=physical dimensions
 
-            # Construct the gradient and hessian
-            if direction is None:
-                gradient = 2 * np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
-                hessian = 2 * (np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
-                            + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
-            else:
-                displacement_dot_d_displacement_d_parametric = np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
-                direction_dot_displacement = np.einsum('j,ij->i', direction, displacements)
-                direction_dot_d_displacement_d_parametric = np.einsum('j,ijk->ik', direction, d_displacement_d_parametric)
-                direction_dot_d2_displacement_d_parametric2 = np.einsum('j,ijkm->ikm', direction, d2_displacement_d_parametric2)
-                gradient = 2 * ((1 + rho)*displacement_dot_d_displacement_d_parametric 
-                                - direction_dot_displacement[:, np.newaxis] * direction_dot_d_displacement_d_parametric)
-                hessian = 2 * ( (1 + rho)*(
-                    np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
-                    + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
-                    - np.einsum('ik,im->ikm', direction_dot_d_displacement_d_parametric, direction_dot_d_displacement_d_parametric)
-                    - np.einsum('i,ikm->ikm', direction_dot_displacement, direction_dot_d2_displacement_d_parametric2)
-                )
+                    for m in range(self.space.num_parametric_dimensions):
+                        parametric_derivative_orders = np.zeros((self.space.num_parametric_dimensions,), dtype=int)
+                        if m == k:
+                            parametric_derivative_orders[m] = 2
+                        else:
+                            parametric_derivative_orders[k] = 1
+                            parametric_derivative_orders[m] = 1
+                        # d2_displacement_d_parametric2[:, :, k, m] = -np.einsum(
+                        #     self.space.compute_basis_matrix(current_guess, parametric_derivative_orders=parametric_derivative_orders),
+                        #     self.coefficients.value.reshape((-1, num_physical_dimensions)), 'ij,jk->ik')
+                        d2_displacement_d_parametric2[:, :, k, m] = -self.space.compute_basis_matrix(current_guess[points_left_to_converge], 
+                                                                                parametric_derivative_orders=parametric_derivative_orders).dot(
+                                                                            self.coefficients.value.reshape((-1, num_physical_dimensions)))
+                            # NOTE on indices: i=points, j=coefficients, k=physical dimensions
 
-            if direction is None:
-                current_objective_values = np.einsum('ij,ij->i', displacements, displacements)
-            else:
-                current_objective_values = ((1 + rho) * np.einsum('ij,ij->i', displacements, displacements)
-                                            - direction_dot_displacement**2)
+                # Construct the gradient and hessian
+                if direction is None:
+                    gradient = 2 * np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
+                    hessian = 2 * (np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
+                                + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
+                else:
+                    displacement_dot_d_displacement_d_parametric = np.einsum('ij,ijk->ik', displacements, d_displacement_d_parametric)
+                    direction_dot_displacement = np.einsum('j,ij->i', direction, displacements)
+                    direction_dot_d_displacement_d_parametric = np.einsum('j,ijk->ik', direction, d_displacement_d_parametric)
+                    direction_dot_d2_displacement_d_parametric2 = np.einsum('j,ijkm->ikm', direction, d2_displacement_d_parametric2)
+                    gradient = 2 * ((1 + rho)*displacement_dot_d_displacement_d_parametric 
+                                    - direction_dot_displacement[:, np.newaxis] * direction_dot_d_displacement_d_parametric)
+                    hessian = 2 * ( (1 + rho)*(
+                        np.einsum('ijk,ijm->ikm', d_displacement_d_parametric, d_displacement_d_parametric)
+                        + np.einsum('ij,ijkm->ikm', displacements, d2_displacement_d_parametric2))
+                        - np.einsum('ik,im->ikm', direction_dot_d_displacement_d_parametric, direction_dot_d_displacement_d_parametric)
+                        - np.einsum('i,ikm->ikm', direction_dot_displacement, direction_dot_d2_displacement_d_parametric2)
+                    )
 
-            # Remove dof that are on constrant boundary and want to leave (active set method)
-            coordinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
-            coordinates_to_remove_on_upper_boundary = np.logical_and(current_guess[points_left_to_converge] == 1, gradient < 0)
-            coordinates_to_from_zero_hessian_column = np.where(~hessian.any(axis=1))[0] # Axis is 1 because we want to remove the column
-            coordinates_to_remove_boolean = np.logical_or(coordinates_to_remove_on_lower_boundary, coordinates_to_remove_on_upper_boundary)
-            coordinates_to_remove_boolean[coordinates_to_from_zero_hessian_column] = True
+                if direction is None:
+                    current_objective_values = np.einsum('ij,ij->i', displacements, displacements)
+                else:
+                    current_objective_values = ((1 + rho) * np.einsum('ij,ij->i', displacements, displacements)
+                                                - direction_dot_displacement**2)
 
-            coordinates_to_keep_boolean = np.logical_not(coordinates_to_remove_boolean)
-            indices_to_keep = []
-            for i in range(points_left_to_converge.shape[0]):
-                indices_to_keep.append(np.arange(self.space.num_parametric_dimensions)[coordinates_to_keep_boolean[i]])
+                # Remove dof that are on constrant boundary and want to leave (active set method)
+                coordinates_to_remove_on_lower_boundary = np.logical_and(current_guess[points_left_to_converge] == 0, gradient > 0)
+                coordinates_to_remove_on_upper_boundary = np.logical_and(current_guess[points_left_to_converge] == 1, gradient < 0)
+                coordinates_to_from_zero_hessian_column = np.where(~hessian.any(axis=1))[0] # Axis is 1 because we want to remove the column
+                coordinates_to_remove_boolean = np.logical_or(coordinates_to_remove_on_lower_boundary, coordinates_to_remove_on_upper_boundary)
+                coordinates_to_remove_boolean[coordinates_to_from_zero_hessian_column] = True
 
-            reduced_gradients = []
-            reduced_hessians = []
-            reduced_objective_values = []
-            total_gradient_norm = 0.
-            counter = 0
-            for i in range(points_left_to_converge.shape[0]):
-                reduced_gradient = gradient[i, indices_to_keep[counter]]
+                coordinates_to_keep_boolean = np.logical_not(coordinates_to_remove_boolean)
+                indices_to_keep = []
+                for i in range(points_left_to_converge.shape[0]):
+                    indices_to_keep.append(np.arange(self.space.num_parametric_dimensions)[coordinates_to_keep_boolean[i]])
 
-                if np.linalg.norm(reduced_gradient) < newton_tolerance:
-                    points_left_to_converge = np.delete(points_left_to_converge, counter)
-                    current_objective_values = np.delete(current_objective_values, counter)
-                    del indices_to_keep[counter]
-                    continue
+                reduced_gradients = []
+                reduced_hessians = []
+                reduced_objective_values = []
+                total_gradient_norm = 0.
+                counter = 0
+                for i in range(points_left_to_converge.shape[0]):
+                    reduced_gradient = gradient[i, indices_to_keep[counter]]
+                    # Scale gradient by tangent Jacobian norm so tolerance directly measures physical stationarity
+                    dS_du = d_displacement_d_parametric[i][:, indices_to_keep[counter]]
+                    jac_scale = np.maximum(np.linalg.norm(dS_du, axis=0), 1e-8)
+                    scaled_gradient = reduced_gradient / jac_scale
 
-                # This is after check so it doesn't throw error
-                reduced_hessian = hessian[np.ix_(np.array([i]), indices_to_keep[counter], indices_to_keep[counter])][0]    
+                    if np.linalg.norm(scaled_gradient) < newton_tolerance:
+                        points_left_to_converge = np.delete(points_left_to_converge, counter)
+                        current_objective_values = np.delete(current_objective_values, counter)
+                        del indices_to_keep[counter]
+                        continue
 
-                reduced_gradients.append(reduced_gradient)
-                reduced_hessians.append(reduced_hessian)
-                reduced_objective_values.append(current_objective_values[counter])
-                total_gradient_norm += np.linalg.norm(reduced_gradient)
-                counter += 1
+                    # This is after check so it doesn't throw error
+                    reduced_hessian = hessian[np.ix_(np.array([i]), indices_to_keep[counter], indices_to_keep[counter])][0]    
 
-            # Check for convergence
-            if np.linalg.norm(total_gradient_norm) < newton_tolerance:
-                break
+                    reduced_gradients.append(reduced_gradient)
+                    reduced_hessians.append(reduced_hessian)
+                    reduced_objective_values.append(current_objective_values[counter])
+                    total_gradient_norm += np.linalg.norm(scaled_gradient)
+                    counter += 1
 
-            # Solve the linear systems
-            for i, index in enumerate(points_left_to_converge):
-                # delta = np.linalg.solve(reduced_hessians[i], -reduced_gradients[i])
+                # Check for convergence
+                if np.linalg.norm(total_gradient_norm) < newton_tolerance:
+                    break
 
-                reduced_hessian = 0.5 * (reduced_hessians[i] + reduced_hessians[i].T)
-                eigenvalues, eigenvectors = np.linalg.eigh(reduced_hessian)
-                flipped_eigenvalues = np.maximum(np.abs(eigenvalues), 1e-12)
-                stabilized_inverse = eigenvectors @ np.diag(1.0 / flipped_eigenvalues) @ eigenvectors.T
-                delta = stabilized_inverse @ (-reduced_gradients[i])
+                # Solve the linear systems
+                if not use_line_search and len(points_left_to_converge) > 0 and all(len(idx) == len(indices_to_keep[0]) and np.array_equal(idx, indices_to_keep[0]) for idx in indices_to_keep):
+                    H_batch = 0.5 * (np.stack(reduced_hessians) + np.swapaxes(np.stack(reduced_hessians), 1, 2))
+                    evals, evecs = np.linalg.eigh(H_batch)
+                    flipped = np.maximum(np.abs(evals), 1e-12)
+                    g_batch = np.stack(reduced_gradients)
+                    Vg = np.einsum('mji,mj->mi', evecs, -g_batch)
+                    deltas = np.einsum('mij,mj->mi', evecs, Vg / flipped)
+                    for i, index in enumerate(points_left_to_converge):
+                        current_guess[index, indices_to_keep[i]] += deltas[i]
+                else:
+                    for i, index in enumerate(points_left_to_converge):
+                        reduced_hessian = 0.5 * (reduced_hessians[i] + reduced_hessians[i].T)
+                        eigenvalues, eigenvectors = np.linalg.eigh(reduced_hessian)
+                        flipped_eigenvalues = np.maximum(np.abs(eigenvalues), 1e-12)
+                        stabilized_inverse = eigenvectors @ np.diag(1.0 / flipped_eigenvalues) @ eigenvectors.T
+                        delta = stabilized_inverse @ (-reduced_gradients[i])
 
-                if not use_line_search:
-                    current_guess[index, indices_to_keep[i]] += delta
-                    continue
+                        if not use_line_search:
+                            current_guess[index, indices_to_keep[i]] += delta
+                            continue
 
-                step_size = 1.0
-                armijo_c1 = 1e-4
-                backtracking_contraction = 0.9
-                min_step_size = 1e-8
-                current_objective = reduced_objective_values[i]
-                directional_derivative = reduced_gradients[i].dot(delta)
+                    step_size = 1.0
+                    armijo_c1 = 1e-4
+                    backtracking_contraction = 0.9
+                    min_step_size = 1e-8
+                    current_objective = reduced_objective_values[i]
+                    directional_derivative = reduced_gradients[i].dot(delta)
 
-                accepted_step = None
-                trial_guess = current_guess[index].copy()
-                line_search_iterations = 0
-                for _ in range(50):
-                    line_search_iterations += 1
-                    trial_guess[:] = current_guess[index]
-                    trial_guess[indices_to_keep[i]] += step_size * delta
-                    trial_guess = np.clip(trial_guess, 0., 1.)
+                    accepted_step = None
+                    trial_guess = current_guess[index].copy()
+                    line_search_iterations = 0
+                    for _ in range(50):
+                        line_search_iterations += 1
+                        trial_guess[:] = current_guess[index]
+                        trial_guess[indices_to_keep[i]] += step_size * delta
+                        trial_guess = np.clip(trial_guess, 0., 1.)
 
-                    trial_function_value = self.evaluate(
-                        parametric_coordinates=trial_guess.reshape(1, -1),
-                        coefficients=self.coefficients.value,
-                        non_csdl=True,
-                    ).reshape(num_physical_dimensions)
-                    trial_displacement = points[index] - trial_function_value
+                        trial_function_value = self.evaluate(
+                            parametric_coordinates=trial_guess.reshape(1, -1),
+                            coefficients=self.coefficients.value,
+                            non_csdl=True,
+                        ).reshape(num_physical_dimensions)
+                        trial_displacement = points[index] - trial_function_value
 
-                    if direction is None:
-                        trial_objective = trial_displacement.dot(trial_displacement)
-                    else:
-                        trial_objective = ((1 + rho) * trial_displacement.dot(trial_displacement)
-                                           - (direction.dot(trial_displacement))**2)
+                        if direction is None:
+                            trial_objective = trial_displacement.dot(trial_displacement)
+                        else:
+                            trial_objective = ((1 + rho) * trial_displacement.dot(trial_displacement)
+                                               - (direction.dot(trial_displacement))**2)
 
-                    if trial_objective <= current_objective + armijo_c1 * step_size * directional_derivative:
-                        total_line_search_iterations += line_search_iterations
-                        max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                        if trial_objective <= current_objective + armijo_c1 * step_size * directional_derivative:
+                            total_line_search_iterations += line_search_iterations
+                            max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                            accepted_step = trial_guess.copy()
+                            break
+
+                        step_size *= backtracking_contraction
+                        if step_size < min_step_size:
+                            total_line_search_iterations += line_search_iterations
+                            max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
+                            accepted_step = trial_guess.copy()
+                            break
+
+                    if accepted_step is None:
                         accepted_step = trial_guess.copy()
-                        break
 
-                    step_size *= backtracking_contraction
-                    if step_size < min_step_size:
-                        total_line_search_iterations += line_search_iterations
-                        max_line_search_iterations = max(max_line_search_iterations, line_search_iterations)
-                        accepted_step = trial_guess.copy()
-                        break
+                    # Update the initial guess
+                    current_guess[index] = accepted_step
 
-                if accepted_step is None:
-                    accepted_step = trial_guess.copy()
-
-                # Update the initial guess
-                current_guess[index] = accepted_step
-
-            # If any of the coordinates are outside the bounds, set them to the bounds
-            current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
+                # If any of the coordinates are outside the bounds, set them to the bounds
+                current_guess[points_left_to_converge] = np.clip(current_guess[points_left_to_converge], 0., 1.)
 
         newton_time = perf_counter() - newton_start_time
         if verbose:
@@ -708,10 +718,16 @@ class Function:
             print(f'line search iterations total: {total_line_search_iterations}, max per point: {max_line_search_iterations}')
 
         if projection_tolerance is not None:
-            current_guess = self.refine_projection(points, current_guess, direction,
-                                                            grid_search_density_parameter, max_newton_iterations,
-                                                            newton_tolerance, projection_tolerance=projection_tolerance, 
-                                                            do_pickles=False, use_line_search=use_line_search)
+            current_guess = self.refine_projection(points, current_guess, direction=direction,
+                                                    use_line_search=use_line_search,
+                                                    projection_tolerance=projection_tolerance,
+                                                    initial_grid_search_density_parameter=grid_search_density_parameter,
+                                                    max_newton_iterations=max_newton_iterations,
+                                                    newton_tolerance=newton_tolerance,
+                                                    grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
+                                                    grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,
+                                                    do_pickles=False,
+                                                    grid_search_density_cutoff=grid_search_density_cutoff)
 
         if plot:
             projection_results = self.evaluate(current_guess).value
@@ -738,17 +754,19 @@ class Function:
 
         return current_guess
 
-    def refine_projection(self, points:np.ndarray, parametric_coordinates:np.ndarray, direction:np.ndarray, initial_grid_search_density_parameter:int=1,
-                          max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=1e-6,
+    def refine_projection(self, points:np.ndarray, parametric_coordinates:np.ndarray, direction:np.ndarray=None,
+                          use_line_search:bool=False, projection_tolerance:float=1e-6,
+                          initial_grid_search_density_parameter:int=1,
+                          max_newton_iterations:int=100, newton_tolerance:float=1e-6,
                           grid_search_evaluation_cutoff:int=None, grid_search_subtraction_cutoff:int=None,
-                          do_pickles=True, grid_search_density_cutoff=50, use_line_search:bool=False) -> np.ndarray:
+                          do_pickles=True, grid_search_density_cutoff=50) -> np.ndarray:
         '''
         For projections where the points are in the geometry, this method finds the points that are not within the tolerance distance and reprojects
         those points using a finer grid search density parameter.
         '''
         if isinstance(points, csdl.Variable):
             points = points.value
-        points_flattened = points.reshape((-1,3))
+        points_flattened = points.reshape((-1, points.shape[-1]))
         previous_projection_results = self.evaluate(parametric_coordinates=parametric_coordinates, non_csdl=True)
         
 
@@ -764,11 +782,15 @@ class Function:
             while len(points_to_reproject) > 0:
                 # print('Total tolerance norm: ', np.linalg.norm(distances))
                 # print(f'Refining projection on {len(points_to_reproject)} points with grid search density parameter:', grid_search_density_parameter)
-                new_parametric_coordinates = self.project(points_flattened[points_to_reproject], direction, grid_search_density_parameter=grid_search_density_parameter,
-                                                          max_newton_iterations=max_newton_iterations, newton_tolerance=newton_tolerance, force_reproject=False,
+                new_parametric_coordinates = self.project(points_flattened[points_to_reproject],
+                                                          direction=direction,
+                                                          use_line_search=use_line_search,
+                                                          grid_search_density_parameter=grid_search_density_parameter,
+                                                          max_newton_iterations=max_newton_iterations,
+                                                          newton_tolerance=newton_tolerance,
+                                                          force_reproject=False,
                                                           grid_search_evaluation_cutoff=grid_search_evaluation_cutoff, 
-                                                          grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,
-                                                          use_line_search=use_line_search)
+                                                          grid_search_subtraction_cutoff=grid_search_subtraction_cutoff)
                 parametric_coordinates[points_to_reproject] = new_parametric_coordinates
                 new_projection_results = self.evaluate(parametric_coordinates=new_parametric_coordinates, non_csdl=True)
                 

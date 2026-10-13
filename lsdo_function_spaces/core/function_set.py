@@ -63,33 +63,75 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
     parametric_coords_per_func = {}
     errors = np.full((num_points, num_funcs), np.inf)
 
+    # Precompute physical bounding boxes (AABBs) for distance lower-bound pruning
+    aabbs = {}
+    for fi, i in enumerate(func_keys):
+        fn = functions[i]
+        try:
+            ctrl = fn.coefficients.value
+            param_axes = tuple(range(fn.space.num_parametric_dimensions))
+            bmin = np.min(ctrl, axis=param_axes)
+            bmax = np.max(ctrl, axis=param_axes)
+            aabbs[i] = (bmin, bmax)
+        except Exception:
+            aabbs[i] = None
+
+    def _aabb_min_dist(pts, bmin, bmax):
+        diff_min = np.maximum(bmin - pts, 0.0)
+        diff_max = np.maximum(pts - bmax, 0.0)
+        return np.sqrt(np.sum(np.maximum(diff_min, diff_max)**2, axis=-1))
+
+    best_known_errors = np.full(num_points, np.inf)
+
     for fi, i in enumerate(func_keys):
         function = functions[i]
-        param_coords = function.project(points, direction=direction_opt, grid_search_density_parameter=options.get('grid_search_density_parameter', 1),
-                                        max_newton_iterations=options.get('max_newton_iterations', 100), newton_tolerance=options.get('newton_tolerance', 1e-6),
-                                        projection_tolerance=projection_tolerance, grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
-                                        grid_search_subtraction_cutoff=grid_search_subtraction_cutoff, do_pickles=False,
-                                        use_line_search=options.get('use_line_search', False))
 
-        func_vals = function.evaluate(param_coords, coefficients=function.coefficients.value, non_csdl=True)
-        if direction is None:
-            errs = np.linalg.norm(func_vals - points, axis=1)
+        # Prune points that are provably farther from function i than current best known distance
+        # Convex hull property: for B-splines, points on the function are strictly within AABB(coefficients)
+        if direction is None and aabbs[i] is not None and num_funcs > 1:
+            d_box = _aabb_min_dist(points, aabbs[i][0], aabbs[i][1])
+            p_eps = priority_eps if i in priority_inds else 0.0
+            active_mask = (d_box - p_eps) < best_known_errors
+            active_indices = np.where(active_mask)[0]
         else:
-            displacement = points - func_vals
-            dir_norm = direction/np.linalg.norm(direction)
-            directed = np.linalg.norm(np.cross(displacement, dir_norm), axis=1)
-            total = np.linalg.norm(displacement, axis=1)
-            errs = directed + 1e-6 * total
+            active_indices = np.arange(num_points)
+
+        if len(active_indices) == 0:
+            continue
+
+        param_coords_active = function.project(points[active_indices], direction=direction_opt,
+                                        use_line_search=options.get('use_line_search', False),
+                                        projection_tolerance=projection_tolerance,
+                                        grid_search_density_parameter=options.get('grid_search_density_parameter', 1),
+                                        max_newton_iterations=options.get('max_newton_iterations', 100),
+                                        newton_tolerance=options.get('newton_tolerance', 1e-6),
+                                        grid_search_evaluation_cutoff=grid_search_evaluation_cutoff,
+                                        grid_search_subtraction_cutoff=grid_search_subtraction_cutoff,
+                                        do_pickles=False)
+
+        func_vals = function.evaluate(param_coords_active, coefficients=function.coefficients.value, non_csdl=True)
+        if direction is None:
+            errs = np.linalg.norm(func_vals - points[active_indices], axis=1)
+        else:
+            displacement = points[active_indices] - func_vals
+            dir_norm = direction / np.linalg.norm(direction)
+            r_dot_d = np.einsum('ij,j->i', displacement, dir_norm)
+            r_sq = np.einsum('ij,ij->i', displacement, displacement)
+            perp_dist = np.sqrt(np.maximum(r_sq - r_dot_d**2, 0.0))
+            errs = perp_dist + 1e-6 * np.sqrt(r_sq)
 
         if i in priority_inds:
             errs = errs - priority_eps
 
-        errors[:, fi] = errs
-        parametric_coords_per_func[i] = param_coords
+        errors[active_indices, fi] = errs
+        best_known_errors[active_indices] = np.minimum(best_known_errors[active_indices], errs)
+
+        if i not in parametric_coords_per_func:
+            parametric_coords_per_func[i] = np.zeros((num_points, function.space.num_parametric_dimensions))
+        parametric_coords_per_func[i][active_indices] = param_coords_active
 
     best_func_indices = np.argmin(errors, axis=1)
-    coords_stack = np.stack([parametric_coords_per_func[i] for i in func_keys], axis=1)
-    best_coords = coords_stack[np.arange(num_points), best_func_indices]
+    best_coords = [parametric_coords_per_func[func_keys[fi]][pt_idx] for pt_idx, fi in enumerate(best_func_indices)]
     return list(zip([func_keys[fi] for fi in best_func_indices], best_coords))
 
 
@@ -456,11 +498,13 @@ class FunctionSet:
         new_function_set = lfs.FunctionSet(functions=new_functions, function_names=self.function_names)
         return new_function_set
 
-    def project(self, points:npt.NDArray[np.float64], num_workers:int=None, direction:npt.NDArray[np.float64]=None, grid_search_density_parameter:int=1, 
-                max_newton_iterations:int=100, newton_tolerance:float=1e-6, projection_tolerance:float=None, plot:bool=False,
+    def project(self, points:npt.NDArray[np.float64], num_workers:int=None, direction:npt.NDArray[np.float64]=None,
+                use_line_search:bool=False, projection_tolerance:float=None,
+                grid_search_density_parameter:int=1, max_newton_iterations:int=100,
+                newton_tolerance:float=1e-6, plot:bool=False,
                 extrema=False, force_reprojection=False, priority_inds:Optional[list[int]]=None, priority_eps:float=1e-3,
                 grid_search_evaluation_cutoff:Optional[float]=None, grid_search_subtraction_cutoff:Optional[float]=None,
-                grid_search_density_cutoff:int=50, do_pickles:bool=True, use_line_search:bool=False) -> list[tuple[int, npt.NDArray[np.float64]]]:
+                grid_search_density_cutoff:int=50, do_pickles:bool=True) -> list[tuple[int, npt.NDArray[np.float64]]]:
         """
         Projects a set of points onto the function. The points to project must be provided. If a direction is provided, the projection will find
         the points on the function that are closest to the axis defined by the direction. If no direction is provided, the projection will find the
@@ -474,19 +518,23 @@ class FunctionSet:
         ----------
         points : np.ndarray -- shape=(num_points, num_phyiscal_dimensions)
             The points to project onto the function.
+        num_workers : int = None
+            The number of parallel workers.
         direction : np.ndarray = None -- shape=(num_parametric_dimensions,)
             The direction of the projection.
+        use_line_search : bool = False
+            If True, use Armijo backtracking for each Newton step of the underlying functions.
+        projection_tolerance : float, optional
+            The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
+            using a finer grid search density parameter for the points that are not within the tolerance distance.
+            NOTE: This is only for use when the points are within the geometry that they are being projected onto, or, if a direction is
+            specified, the axis of the projection intersects the geometry.
         grid_search_density_parameter : int = 1
             The density of the grid search used to find the initial guess for the Newton iterations.
         max_newton_iterations : int = 100
             The maximum number of Newton iterations.
         newton_tolerance : float = 1e-6
             The tolerance for the Newton iterations.
-        projection_tolerance : float, optional
-            The tolerance for the projection. If None, the projection will not be refined. If not None, the projection will be refined
-            using a finer grid search density parameter for the points that are not within the tolerance distance.
-            NOTE: This is only for use when the points are within the geometry that they are being projected onto, or, if a direction is
-            specified, the axis of the projection intersects the geometry.
         plot : bool = False
             Whether or not to plot the projection.
         extrema : bool = False
@@ -498,15 +546,13 @@ class FunctionSet:
         priority_eps : float = 1e-3
             The epsilon value to use for the prioritized functions. If None, no functions are prioritized.
         grid_search_evaluation_cutoff : int = None
-            idk what this does
+            The cutoff for grid search evaluation. Defaults to ~8 GB RAM limit (10^9 elements).
         grid_search_subtraction_cutoff : int = None
-            idk what this does
-        grid_search_density_cutoff : int = 100
+            The cutoff for grid search subtraction pairs. Defaults to ~8 GB RAM limit (10^9 elements).
+        grid_search_density_cutoff : int = 50
             The cutoff for the grid search density parameter. If the grid search density parameter exceeds this value during refinement,
             the projection will be stopped.
             This is to prevent the projection from taking too long. If the projection is stopped, a warning will be printed.
-        use_line_search : bool = False
-            If True, use Armijo backtracking for each Newton step of the underlying functions.
         """
         if num_workers is None:
             num_workers = lfs.num_workers
