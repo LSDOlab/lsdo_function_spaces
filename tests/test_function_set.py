@@ -252,3 +252,42 @@ def test_function_set_refit():
     assert isinstance(fset_refit, lfs.FunctionSet)
     assert len(fset_refit.functions) == 1
 
+
+def test_function_set_project_multi_point_line_search():
+    """Verify that multi-point batch projection across multi-patch FunctionSet works with use_line_search=True."""
+    recorder = csdl.Recorder(inline=True)
+    recorder.start()
+
+    s1 = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1, 1), coefficients_shape=(2, 2))
+    c1 = np.zeros((2, 2, 3))
+    c1[0, 0, :2] = [0.0, 0.0]
+    c1[0, 1, :2] = [0.0, 1.0]
+    c1[1, 0, :2] = [1.0, 0.0]
+    c1[1, 1, :2] = [1.0, 1.0]
+    f1 = lfs.Function(space=s1, coefficients=c1, name="patch0")
+
+    s2 = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1, 1), coefficients_shape=(2, 2))
+    c2 = np.zeros((2, 2, 3))
+    c2[0, 0, :2] = [1.0, 0.0]
+    c2[0, 1, :2] = [1.0, 1.0]
+    c2[1, 0, :2] = [2.0, 0.0]
+    c2[1, 1, :2] = [2.0, 1.0]
+    f2 = lfs.Function(space=s2, coefficients=c2, name="patch1")
+
+    fset = lfs.FunctionSet({0: f1, 1: f2})
+
+    # Batch of 10 points on patch 0 and 10 points on patch 1
+    pts0 = np.column_stack([np.linspace(0.1, 0.9, 10), np.linspace(0.1, 0.9, 10), np.zeros(10)])
+    pts1 = np.column_stack([np.linspace(1.1, 1.9, 10), np.linspace(0.1, 0.9, 10), np.zeros(10)])
+    all_pts = np.vstack([pts0, pts1])
+
+    res = fset.project(all_pts, use_line_search=True, do_pickles=False)
+    patch_indices = [r[0] for r in res]
+    assert patch_indices[:10] == [0] * 10
+    assert patch_indices[10:] == [1] * 10
+
+    eval_pts = fset.evaluate(res, non_csdl=True)
+    dists = np.linalg.norm(eval_pts - all_pts, axis=1)
+    assert np.max(dists) < 1e-4
+
+
