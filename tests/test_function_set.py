@@ -291,3 +291,39 @@ def test_function_set_project_multi_point_line_search():
     assert np.max(dists) < 1e-4
 
 
+def test_function_set_project_multiprocessing_spawn():
+    """Verify that multi-worker projection works cleanly without relying on inherited globals (Python 3.14 spawn compatibility)."""
+    s1 = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1, 1), coefficients_shape=(2, 2))
+    c1 = np.zeros((2, 2, 3))
+    c1[0, 0, :2] = [0.0, 0.0]
+    c1[0, 1, :2] = [0.0, 1.0]
+    c1[1, 0, :2] = [1.0, 0.0]
+    c1[1, 1, :2] = [1.0, 1.0]
+    f1 = lfs.Function(space=s1, coefficients=c1, name="patch0_mp")
+
+    s2 = lfs.BSplineSpace(num_parametric_dimensions=2, degree=(1, 1), coefficients_shape=(2, 2))
+    c2 = np.zeros((2, 2, 3))
+    c2[0, 0, :2] = [1.0, 0.0]
+    c2[0, 1, :2] = [1.0, 1.0]
+    c2[1, 0, :2] = [2.0, 0.0]
+    c2[1, 1, :2] = [2.0, 1.0]
+    f2 = lfs.Function(space=s2, coefficients=c2, name="patch1_mp")
+
+    fset = lfs.FunctionSet({0: f1, 1: f2})
+
+    pts = np.array([
+        [0.2, 0.2, 0.0],
+        [0.8, 0.8, 0.0],
+        [1.2, 0.2, 0.0],
+        [1.8, 0.8, 0.0],
+    ])
+
+    res = fset.project(pts, num_workers=2, do_pickles=False)
+    assert len(res) == 4
+    assert res[0][0] == 0
+    assert res[1][0] == 0
+    assert res[2][0] == 1
+    assert res[3][0] == 1
+
+
+

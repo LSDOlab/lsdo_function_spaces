@@ -53,6 +53,7 @@
 * **STEP CAD Entity Parser Fallback**: Added robust heuristic scanning in `_detect_knot_fields` when knot multiplicity and knot lists appear with integer formatting or non-standard entity slots.
 * **Rational Surface Detection**: Added explicit `NotImplementedError` when rational NURBS (`RATIONAL_B_SPLINE_SURFACE`) entities are encountered.
 * **CSDL Recorder Initialization**: Added `_ensure_active_recorder()` when loading pickled geometries to prevent unpickling errors when a CSDL recorder is inactive.
+* **Python 3.14 / Spawn Multiprocessing Compatibility**: Eliminated dependence on module-level globals (`global_functions`, `global_options`) in `find_best_surface_chunked`, passing arguments explicitly via `functools.partial` to ensure robust multi-worker projection under `spawn` (Python 3.14, macOS, and Windows).
 
 ---
 

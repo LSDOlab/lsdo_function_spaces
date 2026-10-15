@@ -4,6 +4,7 @@ import csdl_alpha as csdl
 import numpy as np
 import numpy.typing as npt
 import scipy.sparse as sps
+import functools
 import concurrent.futures
 import itertools
 import pickle
@@ -17,12 +18,19 @@ from typing import Optional, Union, Sequence
 import lsdo_function_spaces as lfs
 from lsdo_function_spaces.utils.internal_utilities import get_projection_squared_distances
 
+# Module-level defaults for backward compatibility
+global_functions = None
+global_options = None
+
 def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=None):
     # Batch-project all points on each function and choose best per-point by argmin across functions.
     if functions is None:
-        functions = global_functions
+        if global_functions is not None:
+            functions = global_functions
+        else:
+            raise ValueError("functions dictionary must be provided to find_best_surface_chunked")
     if options is None:
-        options = global_options
+        options = global_options if global_options is not None else {}
 
     priority_inds = options.get('priority_inds', [])
     priority_eps = options.get('priority_eps', 0.0)
@@ -618,15 +626,14 @@ class FunctionSet:
             global global_options
             global_options = options
 
-            # pool = Pool(num_workers)
-            # results = pool.map(find_best_surface_chunked, chunks)
+            worker_fn = functools.partial(find_best_surface_chunked, functions=self.functions, options=options)
 
             try:
                 with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executor:
-                    results = executor.map(find_best_surface_chunked, chunks)
-            except (PermissionError, RuntimeError):
-                # Fall back to serial if process pools are restricted or unsafe under spawn.
-                results = map(lambda c: find_best_surface_chunked(c, self.functions, options), chunks)
+                    results = list(executor.map(worker_fn, chunks))
+            except Exception:
+                # Fall back to serial if process pools are restricted or fail under spawn.
+                results = [find_best_surface_chunked(c, self.functions, options) for c in chunks]
 
             parametric_coordinates = []
             for result in results:
