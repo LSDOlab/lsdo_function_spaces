@@ -3,7 +3,7 @@
 [![Documentation Status](https://readthedocs.org/projects/lsdo-function-spaces/badge/?version=latest)](https://lsdo-function-spaces.readthedocs.io/en/latest/?badge=latest)
 [![Tests](https://github.com/LSDOlab/lsdo_function_spaces/actions/workflows/actions.yml/badge.svg)](https://github.com/LSDOlab/lsdo_function_spaces/actions)
 ![Python Version](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue)
-[![License: LGPL v3](https://img.shields.io/badge/License-LGPL_v3-blue.svg)](LICENSE.txt)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE.txt)
 
 **lsdo_function_spaces** is a pure-Python library for constructing continuous, high-dimensional, differentiable function representations (B-splines, tensor-product splines, scattered data spaces, and multivariate polynomials) tailored for gradient-based Multidisciplinary Design Optimization (MDO) and scientific computing.
 
@@ -148,4 +148,4 @@ View the generated documentation by opening `docs/_build/html/index.html` in any
 
 ## License
 
-This project is licensed under the terms of the **GNU Lesser General Public License v3.0** ([LGPL-3.0](LICENSE.txt)).
+`lsdo_function_spaces` is distributed under the terms of the Apache License, Version 2.0. See [LICENSE.txt](LICENSE.txt) for details.
