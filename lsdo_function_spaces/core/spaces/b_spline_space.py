@@ -103,6 +103,16 @@ class BSplineSpace(LinearFunctionSpace):
                 self.knot_indices.append(np.arange(knot_index, knot_index + num_knots_i))
                 knot_index += num_knots_i
 
+    @property
+    def parametric_bounds(self) -> Tuple[Tuple[float, float], ...]:
+        """Returns the valid parametric bounds (u_min, u_max) for each parametric dimension."""
+        bounds = []
+        for i in range(self.num_parametric_dimensions):
+            u_min = float(self.knots[i][self.degree[i]])
+            u_max = float(self.knots[i][-self.degree[i] - 1])
+            bounds.append((u_min, u_max))
+        return tuple(bounds)
+
     def _evaluate(
         self,
         coefficients: Union[np.ndarray, csdl.Variable],

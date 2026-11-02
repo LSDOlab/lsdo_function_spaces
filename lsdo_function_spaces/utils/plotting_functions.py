@@ -3,7 +3,7 @@
 
 import numpy as np
 import pyvista as pv
-from typing import Union
+from typing import Union, Optional, Sequence
 
 
 def _normalize_points(points: np.ndarray) -> np.ndarray:
@@ -68,16 +68,24 @@ def _flatten_plotting_elements(elements: list) -> list:
     return flattened
 
 
-def show_plot(plotting_elements:list, title:str,  axes:bool=True, view_up:str="z", interactive:bool=True, camera:dict={}, screenshot:str=""):
+def show_plot(
+    plotting_elements: Optional[list] = None,
+    title: str = "lsdo_function_spaces Plot",
+    axes: bool = True,
+    view_up: str = "z",
+    interactive: bool = True,
+    camera: dict = {},
+    screenshot: str = "",
+):
     '''
     Shows the plot.
 
     Parameters
     -----------
-    plotting_elements : list
-        The list of PyVista plotting elements to plot.
+    plotting_elements : Optional[list]
+        The list of PyVista plotting elements to plot. Default is None ([]).
     title : str
-        The title of the plot.
+        The title of the plot. Default is "lsdo_function_spaces Plot".
     axes : bool = True
         A boolean on whether to show the axes or not.
     viewup : str = "z"
@@ -88,6 +96,9 @@ def show_plot(plotting_elements:list, title:str,  axes:bool=True, view_up:str="z
     plotter = pv.Plotter(off_screen=pv.OFF_SCREEN)
     if axes:
         plotter.show_axes()
+
+    if plotting_elements is None:
+        plotting_elements = []
 
     # Flatten nested lists to handle cases where users pass [plot_points_result]
     plotting_elements = _flatten_plotting_elements(plotting_elements)

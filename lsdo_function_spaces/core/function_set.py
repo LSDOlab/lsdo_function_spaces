@@ -12,7 +12,10 @@ from pathlib import Path
 import string
 import random
 import pyvista as pv
-from typing import Optional, Union, Sequence
+from typing import Optional, Union, Sequence, TYPE_CHECKING, Tuple, List, Dict
+
+if TYPE_CHECKING:
+    from lsdo_function_spaces.core.marker import Marker
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
@@ -143,13 +146,17 @@ def find_best_surface_chunked(chunk, functions:dict[lfs.Function]=None, options=
     return list(zip([func_keys[fi] for fi in best_func_indices], best_coords))
 
 
-@dataclass
+@dataclass(eq=False)
 class FunctionSet:
     """Representation of a composite set of functions (e.g., multi-patch surfaces)."""
     functions: dict[int,lfs.Function]
     function_names : dict[int,str] = None
     name : str = None
     space : lfs.FunctionSetSpace = None
+    markers : Optional[dict[str, Marker]] = None
+
+    def __hash__(self):
+        return id(self)
 
     def __post_init__(self):
         if isinstance(self.functions, list):
@@ -167,6 +174,9 @@ class FunctionSet:
             self.space = lfs.FunctionSetSpace(
                 num_parametric_dimensions={i:function.space.num_parametric_dimensions for i, function in self.functions.items()},
                 spaces={i:function.space for i, function in self.functions.items()})
+
+        if self.markers is None:
+            self.markers = {}
             
     def find_surface_connections(self):
         perfect_connections = {}
@@ -210,6 +220,116 @@ class FunctionSet:
                             connected_functions.add(frozenset([i,j]))
                             break
         return perfect_connections
+
+    def discover_interfaces(self, tolerance: float = 1e-5, search_n: int = 7) -> list:
+        """
+        Automatically detects topological edge seams between patches in this FunctionSet
+        and returns a list of continuous Interface objects with detected Provenance.
+
+        Parameters
+        ----------
+        tolerance : float, optional
+            Maximum allowed distance for boundary alignment. Default is 1e-5.
+        search_n : int, optional
+            Number of boundary evaluation sample points along each edge. Default is 7.
+
+        Returns
+        -------
+        list[Interface]
+            List of discovered Interface objects equipped with Provenance(source_type="detected").
+        """
+        from lsdo_function_spaces.core.interface import Interface, InterfaceDomain, Provenance, Discretization
+        from lsdo_function_spaces.core.marker import Marker
+
+        ones = np.ones((search_n, 1))
+        zeros = np.zeros((search_n, 1))
+        lin = np.linspace(0.0, 1.0, search_n).reshape((-1, 1))
+
+        # Evaluate 4 edges for each patch (1: v=0, 2: u=1, 3: v=1, 4: u=0)
+        edge_evals = {}
+        for pidx, fn in self.functions.items():
+            e1 = fn.evaluate(np.hstack((lin, zeros)), non_csdl=True)
+            e2 = fn.evaluate(np.hstack((ones, lin)), non_csdl=True)
+            e3 = fn.evaluate(np.hstack((lin, ones)), non_csdl=True)
+            e4 = fn.evaluate(np.hstack((zeros, lin)), non_csdl=True)
+            edge_evals[pidx] = {1: e1, 2: e2, 3: e3, 4: e4}
+
+        def make_edge_map(edge_idx: int, reversed_dir: bool):
+            def map_fn(s):
+                s_val = float(s[0]) if hasattr(s, "__len__") else float(s)
+                t = 1.0 - s_val if reversed_dir else s_val
+                if edge_idx == 1:
+                    return np.array([t, 0.0])
+                elif edge_idx == 2:
+                    return np.array([1.0, t])
+                elif edge_idx == 3:
+                    return np.array([t, 1.0])
+                elif edge_idx == 4:
+                    return np.array([0.0, t])
+                raise ValueError(f"Invalid edge_idx {edge_idx}")
+            return map_fn
+
+        discovered: list = []
+        connected_pairs = set()
+
+        patch_ids = sorted(self.functions.keys())
+        for idx_a in range(len(patch_ids)):
+            pi = patch_ids[idx_a]
+            for idx_b in range(idx_a + 1, len(patch_ids)):
+                pj = patch_ids[idx_b]
+                pair_key = (pi, pj)
+                if pair_key in connected_pairs:
+                    continue
+
+                for ei in [1, 2, 3, 4]:
+                    eval_i = edge_evals[pi][ei]
+                    for ej in [1, 2, 3, 4]:
+                        eval_j = edge_evals[pj][ej]
+
+                        gap_forward = float(np.max(np.linalg.norm(eval_i - eval_j, axis=1)))
+                        gap_reversed = float(np.max(np.linalg.norm(eval_i - eval_j[::-1], axis=1)))
+
+                        if gap_forward <= tolerance or gap_reversed <= tolerance:
+                            is_rev = gap_reversed < gap_forward
+                            gap = gap_reversed if is_rev else gap_forward
+                            rel_orient = -1 if is_rev else 1
+
+                            map_i = make_edge_map(ei, reversed_dir=False)
+                            map_j = make_edge_map(ej, reversed_dir=is_rev)
+
+                            m_i = Marker(
+                                entity=self,
+                                parametric_coordinates=(pi, map_i),
+                                domain=InterfaceDomain.interval(0.0, 1.0),
+                                name=f"patch_{pi}_edge_{ei}_marker",
+                            )
+                            m_j = Marker(
+                                entity=self,
+                                parametric_coordinates=(pj, map_j),
+                                domain=InterfaceDomain.interval(0.0, 1.0),
+                                name=f"patch_{pj}_edge_{ej}_marker",
+                            )
+
+                            prov = Provenance(
+                                source_type="detected",
+                                tolerance=tolerance,
+                                measured_gap=gap,
+                                relative_orientation=rel_orient,
+                            )
+
+                            inter = Interface(
+                                markers=[m_i, m_j],
+                                discretization=Discretization(num_points=search_n, scheme="gauss_legendre"),
+                                provenance=prov,
+                                name=f"seam_p{pi}_e{ei}_to_p{pj}_e{ej}",
+                            )
+                            discovered.append(inter)
+                            connected_pairs.add(pair_key)
+                            break
+                    if pair_key in connected_pairs:
+                        break
+
+        return discovered
 
     def apply_surface_connections(self, geometry=None):
         connections = self.space.connections
@@ -271,8 +391,81 @@ class FunctionSet:
             The copied function set.
         '''
         functions = {i:function.copy() for i, function in self.functions.items()}
-        function_set = lfs.FunctionSet(functions=functions, function_names=self.function_names, name=self.name)
+        function_set = lfs.FunctionSet(functions=functions, function_names=self.function_names, name=self.name,
+                                       space=self.space, markers=dict(self.markers) if self.markers else {})
         return function_set
+
+    def add_marker(
+        self,
+        parametric_coordinates: Optional[Union[tuple[int, npt.NDArray[np.float64]], list[tuple[int, npt.NDArray[np.float64]]]]] = None,
+        name: Optional[str] = None,
+    ) -> Marker:
+        """
+        Adds a semantic marker to the function set at the specified parametric coordinates.
+
+        Parameters
+        ----------
+        parametric_coordinates : Optional[Union[tuple[int, npt.NDArray[np.float64]], list[tuple[int, npt.NDArray[np.float64]]]]]
+            Direct parametric coordinates on the function set, specified as:
+            - A tuple: (function_index, uv_array) for a single point.
+            - Or a list of tuples: [(function_index, uv_array), ...] for one or more points.
+        name : Optional[str]
+            The name of the marker. If None, an auto-generated unique name is assigned.
+
+        Returns
+        -------
+        Marker
+            The created marker attached to this function set.
+        """
+        from lsdo_function_spaces.core.marker import Marker
+
+        if isinstance(parametric_coordinates, str) and not isinstance(name, str):
+            name, parametric_coordinates = parametric_coordinates, name
+
+        if parametric_coordinates is None:
+            raise ValueError("Must provide 'parametric_coordinates' to add_marker.")
+
+        # Continuous function map on a specific patch: (patch_idx, Function)
+        if isinstance(parametric_coordinates, tuple) and len(parametric_coordinates) == 2 and isinstance(parametric_coordinates[0], (int, np.integer)) and isinstance(parametric_coordinates[1], lfs.Function):
+            marker = Marker.from_function(
+                entity=self,
+                function_map=(int(parametric_coordinates[0]), parametric_coordinates[1]),
+                name=name,
+            )
+        elif hasattr(self, 'functions') and len(self.functions) == 1 and isinstance(parametric_coordinates, lfs.Function):
+            first_idx = list(self.functions.keys())[0]
+            marker = Marker.from_function(
+                entity=self,
+                function_map=(first_idx, parametric_coordinates),
+                name=name,
+            )
+        # If it's a list of (func_idx, uv) tuples:
+        elif isinstance(parametric_coordinates, list) and len(parametric_coordinates) > 0 and isinstance(parametric_coordinates[0], tuple):
+            coords = [(int(idx), np.asarray(uv, dtype=np.float64)) for idx, uv in parametric_coordinates]
+            marker = Marker(entity=self, parametric_coordinates=coords, name=name)
+        # If it's a single (func_idx, uv) tuple:
+        elif isinstance(parametric_coordinates, tuple) and len(parametric_coordinates) == 2 and isinstance(parametric_coordinates[0], (int, np.integer)):
+            coords = [(int(parametric_coordinates[0]), np.asarray(parametric_coordinates[1], dtype=np.float64))]
+            marker = Marker(entity=self, parametric_coordinates=coords, name=name)
+        elif hasattr(self, 'functions') and len(self.functions) == 1 and isinstance(parametric_coordinates, (np.ndarray, list)):
+            first_idx = list(self.functions.keys())[0]
+            coords = [(first_idx, np.asarray(parametric_coordinates, dtype=np.float64))]
+            marker = Marker(entity=self, parametric_coordinates=coords, name=name)
+        else:
+            raise ValueError(
+                f"Parametric coordinates for a FunctionSet must be a tuple of (function_index, uv_array), "
+                f"a continuous (function_index, Function) map, or a list of such tuples, but got {type(parametric_coordinates)}."
+            )
+
+        if not hasattr(self, 'markers') or self.markers is None:
+            self.markers = {}
+        self.markers[marker.name] = marker
+        return marker
+
+    @property
+    def parametric_bounds(self) -> Dict[int, Tuple[Tuple[float, float], ...]]:
+        """Returns the parametric bounds (u_min, u_max) per dimension for each patch."""
+        return {idx: fn.parametric_bounds for idx, fn in self.functions.items()}
 
     def evaluate_normals(self, parametric_coordinates:list[tuple[int, np.ndarray]], plot:bool=False) -> csdl.Variable:
         '''
@@ -346,6 +539,47 @@ class FunctionSet:
             function_indices.append(function_index)
             function_parametric_coordinates.append(coordinates)
 
+        # Handle CSDL variable coordinates (e.g. sliding / parameterized markers)
+        has_csdl_coords = any(
+            isinstance(c, csdl.Variable) or (isinstance(c, (list, tuple)) and any(isinstance(x, csdl.Variable) for x in c))
+            for c in function_parametric_coordinates
+        )
+
+        if has_csdl_coords:
+            point_evals = []
+            for pt_idx, (f_idx, coords) in enumerate(parametric_coordinates):
+                fn = self.functions[f_idx]
+                p_deriv = None
+                if parametric_derivative_orders is not None:
+                    if isinstance(parametric_derivative_orders, (tuple, list)) and len(parametric_derivative_orders) > 0 and isinstance(parametric_derivative_orders[0], (int, np.integer)):
+                        p_deriv = parametric_derivative_orders
+                    elif isinstance(parametric_derivative_orders, list) and len(parametric_derivative_orders) == len(parametric_coordinates):
+                        p_deriv = parametric_derivative_orders[pt_idx]
+                    elif isinstance(parametric_derivative_orders, list) and len(parametric_derivative_orders) == 1 and isinstance(parametric_derivative_orders[0], (tuple, list)):
+                        p_deriv = parametric_derivative_orders[0]
+
+                if isinstance(coords, csdl.Variable) and len(coords.shape) == 1:
+                    coords = coords.reshape((1, -1))
+
+                pt_val = fn.evaluate(coords, parametric_derivative_orders=p_deriv, non_csdl=non_csdl)
+                if hasattr(pt_val, "shape") and len(pt_val.shape) == 1:
+                    pt_val = pt_val.reshape((1, -1))
+                point_evals.append(pt_val)
+
+            if len(point_evals) == 1:
+                function_values = point_evals[0]
+            else:
+                if non_csdl:
+                    function_values = np.vstack(point_evals)
+                else:
+                    function_values = csdl.vstack(point_evals)
+
+            if plot:
+                plotting_elements = self.plot(opacity=0.8, show=False)
+                vals = function_values if non_csdl else function_values.value
+                lfs.plot_points(vals, color='#C69214', size=10, additional_plotting_elements=plotting_elements)
+            return function_values
+
         # Evaluate each function at the given coordinates
         basis_matrices = []
         coeff_vectors = []
@@ -381,7 +615,14 @@ class FunctionSet:
             reorder_indices += indices.astype(int).tolist()
             para_coords = np.array([function_parametric_coordinates[j] for j in indices]).reshape(-1, function.space.num_parametric_dimensions)
             if parametric_derivative_orders is not None:
-                para_derivs = parametric_derivative_orders
+                if isinstance(parametric_derivative_orders, (tuple, list)) and len(parametric_derivative_orders) > 0 and isinstance(parametric_derivative_orders[0], (int, np.integer)):
+                    para_derivs = parametric_derivative_orders
+                elif isinstance(parametric_derivative_orders, list) and len(parametric_derivative_orders) == len(function_indices):
+                    para_derivs = parametric_derivative_orders[indices[0]]
+                elif isinstance(parametric_derivative_orders, list) and len(parametric_derivative_orders) == 1 and isinstance(parametric_derivative_orders[0], (tuple, list)):
+                    para_derivs = parametric_derivative_orders[0]
+                else:
+                    para_derivs = parametric_derivative_orders
             else:
                 para_derivs = None
             basis_matrix, coefficients = function.get_matrix_vector(parametric_coordinates=para_coords,

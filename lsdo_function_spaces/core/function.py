@@ -24,7 +24,10 @@ if "numpy._core" not in sys.modules:
 import string
 import random
 from time import perf_counter
-from typing import Union, Optional, Sequence
+from typing import Union, Optional, Sequence, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from lsdo_function_spaces.core.marker import Marker
 
 # from lsdo_function_spaces.core.function_space import FunctionSpace
 import lsdo_function_spaces as lfs
@@ -52,8 +55,10 @@ class Function:
         
         self.space = space
         self.coefficients = coefficients
+        self.is_constant = not isinstance(coefficients, csdl.Variable)
         self.name = name
         self.triangulation = None
+        self.markers: dict[str, Marker] = {}
 
         if not isinstance(self.coefficients, csdl.Variable):
             self.coefficients = csdl.Variable(value=self.coefficients)
@@ -71,7 +76,68 @@ class Function:
         '''
         Returns a copy of the function.
         '''
-        return lfs.Function(space=self.space, coefficients=self.coefficients*1., name=self.name)
+        coeffs = self.coefficients * 1. if self.coefficients is not None else None
+        f = lfs.Function(space=self.space, coefficients=coeffs, name=self.name)
+        if hasattr(self, 'markers'):
+            f.markers = dict(self.markers)
+        return f
+
+    def add_marker(
+        self,
+        parametric_coordinates: Optional[npt.NDArray[np.float64]] = None,
+        name: Optional[str] = None,
+    ) -> Marker:
+        """
+        Adds a semantic marker to the function at the specified parametric coordinates.
+
+        Parameters
+        ----------
+        parametric_coordinates : Optional[npt.NDArray[np.float64]]
+            Direct parametric coordinates (shape (num_parametric_dim,) array for a single point
+            or (num_points, num_parametric_dim) array for multiple points).
+        name : Optional[str]
+            The name of the marker. If None, an auto-generated unique name is assigned.
+
+        Returns
+        -------
+        Marker
+            The created marker attached to this function.
+        """
+        from lsdo_function_spaces.core.marker import Marker
+
+        if isinstance(parametric_coordinates, str) and not isinstance(name, str):
+            name, parametric_coordinates = parametric_coordinates, name
+
+        if parametric_coordinates is None:
+            raise ValueError("Must provide 'parametric_coordinates' to add_marker.")
+
+        if isinstance(parametric_coordinates, lfs.Function):
+            marker = Marker.from_function(
+                entity=self,
+                function_map=parametric_coordinates,
+                name=name,
+            )
+        else:
+            coords = np.asarray(parametric_coordinates, dtype=np.float64)
+            if coords.ndim == 1:
+                coords = coords.flatten()
+            marker = Marker(
+                entity=self,
+                parametric_coordinates=coords,
+                name=name,
+            )
+
+        if not hasattr(self, 'markers') or self.markers is None:
+            self.markers = {}
+        self.markers[marker.name] = marker
+        return marker
+
+    @property
+    def parametric_bounds(self) -> Tuple[Tuple[float, float], ...]:
+        """Returns the valid parametric bounds (u_min, u_max) for each parametric dimension."""
+        if hasattr(self.space, "parametric_bounds"):
+            return self.space.parametric_bounds
+        return tuple((0.0, 1.0) for _ in range(self.num_parametric_dimensions))
 
     def get_matrix_vector(self, parametric_coordinates:np.ndarray, parametric_derivative_orders:list[tuple]=None, coefficients:csdl.Variable=None,
                  non_csdl:bool=False):

@@ -2,7 +2,7 @@
 
 import multiprocessing
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 num_workers = multiprocessing.cpu_count()
 
 # NumPy 2.x compatibility patch for CSDL_alpha SetVarIndex
@@ -27,6 +27,22 @@ from .core.function import Function
 from .core.function_set import FunctionSet
 from .core.function_space import FunctionSpace, LinearFunctionSpace
 from .core.function_set_space import FunctionSetSpace
+from .core.marker import Marker
+from .core.interface import (
+    InterfaceDomain,
+    Discretization,
+    Provenance,
+    Interface,
+    InterfaceCondition,
+    CollocationCondition,
+    TransversalDerivativeCondition,
+    NormalAlignmentCondition,
+    ClearanceCondition,
+)
+from .core.function_network import (
+    FunctionNetwork,
+    RankNullityReport,
+)
 
 # Function spaces
 from .core.spaces.b_spline_space import BSplineSpace, BSplineSpaceNew
@@ -36,6 +52,7 @@ from .core.spaces.idw_space import IDWFunctionSpace
 from .core.spaces.constant_space import ConstantSpace
 from .core.spaces.rbf_space import RBFFunctionSpace
 from .core.spaces.tri_space import LinearTriangulationSpace
+from .core.spaces.sinusoid import Sinusoid
 
 # Utilities
 from .utils.plotting_functions import (
@@ -61,6 +78,18 @@ __all__ = [
     "FunctionSpace",
     "LinearFunctionSpace",
     "FunctionSetSpace",
+    "Marker",
+    "InterfaceDomain",
+    "Discretization",
+    "Provenance",
+    "Interface",
+    "InterfaceCondition",
+    "CollocationCondition",
+    "TransversalDerivativeCondition",
+    "NormalAlignmentCondition",
+    "ClearanceCondition",
+    "FunctionNetwork",
+    "RankNullityReport",
     "BSplineSpace",
     "BSplineSpaceNew",
     "PolynomialSpace",
@@ -69,6 +98,7 @@ __all__ = [
     "IDWFunctionSpace",
     "RBFFunctionSpace",
     "LinearTriangulationSpace",
+    "Sinusoid",
     "plot_points",
     "plot_curve",
     "plot_surface",
