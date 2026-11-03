@@ -286,8 +286,10 @@ class Marker:
 
     def compute_boundary_violation(self) -> Optional[csdl.Variable]:
         """
-        Computes the quadratic box boundary violation penalty for variable parametric coordinates:
+        Computes the quadratic box boundary violation penalty for variable parametric coordinates::
+
             sum( relu(u_min - u)^2 + relu(u - u_max)^2 )
+
         Returns None if coordinates are numeric constant, or a scalar CSDL variable if variable.
         """
         if self.is_constant:

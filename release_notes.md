@@ -1,5 +1,12 @@
 # Release Notes
 
+## lsdo_function_spaces 1.2.1 (November 2026)
+
+* **Documentation & Sphinx CI Fixes**: Corrected reST docstring formatting, list indentation, and LaTeX math syntax in `FunctionNetwork`, `CollocationCondition`, `NormalAlignmentCondition`, `TransversalDerivativeCondition`, `ClearanceCondition`, and `Marker` to resolve Sphinx `-W` build verification warnings on Python 3.11.
+* **Docstring Cleanups**: Normalized numpydoc section headers and underline lengths across core and utility modules.
+
+---
+
 ## lsdo_function_spaces 1.2.0 (November 2026)
 
 `lsdo_function_spaces` 1.2.0 introduces a comprehensive topological connectivity, semantic marker, and function network framework for multidisciplinary geometric modeling and optimization. This release establishes a mathematically rigorous separation between connectivity topology and constraint mechanics, supporting continuous and discrete multi-patch coupling, high-order continuity enforcement, automated seam discovery on CAD geometries, and algebraic freedom diagnostics via Singular Value Decomposition (SVD).

@@ -1,12 +1,14 @@
 """STEP file importer (patched).
 
 Correctness fixes:
+
 - Robust entity parsing across line wraps (entities end with ';')
 - Correct float parsing for knots/control points (supports E/e and D/d exponents)
 - Correct knot expansion with multiplicities
 - Order-preserving control point lookup via id->xyz dictionary
 
 Performance improvements:
+
 - Single pass read: builds entity dict and point dict once
 - Avoids pandas and global regex scans
 - Caches BSplineSpace objects by a stable hash key
@@ -14,6 +16,7 @@ Performance improvements:
 Intended primarily for OpenVSP-exported STEP files containing B_SPLINE_SURFACE_WITH_KNOTS.
 
 Public API:
+
 - import_file(...)
 - _check_if_load_stored_import(...)
 """
@@ -233,7 +236,9 @@ def _detect_knot_fields(fields: List[str]) -> Tuple[List[int], List[int], List[f
 def _parse_bspline_surface_with_knots(rhs: str) -> Optional[Tuple[str, int, int, np.ndarray, List[int], List[int], List[float], List[float]]]:
     """Parse B_SPLINE_SURFACE_WITH_KNOTS entity RHS.
 
-    Returns:
+    Returns
+    -------
+    tuple
         (name, deg_u, deg_v, cp_id_grid, u_mults, v_mults, u_knots, v_knots)
     """
     if not rhs.startswith('B_SPLINE_SURFACE_WITH_KNOTS'):

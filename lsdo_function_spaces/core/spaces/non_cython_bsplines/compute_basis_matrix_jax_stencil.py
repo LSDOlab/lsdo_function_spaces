@@ -332,8 +332,8 @@ def evaluate_b_spline_jax(us, degrees, knot_vectors, coeffs, der_orders=None):
     """
     Evaluate B-spline basis functions at parameter u with derivatives.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     us : jnp.ndarray, shape (M, d)
         Parameter values where the B-spline basis functions are evaluated.
     degrees : tuple of int

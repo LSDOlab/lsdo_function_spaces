@@ -956,7 +956,7 @@ class Function:
         Plots the B-spline Surface.
 
         Parameters
-        -----------
+        ----------
         points_type : list = ['evaluated_points']
             The type of points to be plotted. {evaluated_points, coefficients}
         plot_types : list = ['function']
@@ -1033,7 +1033,7 @@ class Function:
         Plots the points of the function.
 
         Parameters
-        -----------
+        ----------
         points_type : str = 'evaluated_points'
             The type of points to be plotted. {evaluated_points, coefficients}
         opactity : float = 1.
@@ -1063,7 +1063,7 @@ class Function:
         Plots the function as a curve. NOTE: This should only be called if the function is a curve!
 
         Parameters
-        -----------
+        ----------
         points_type : str = 'evaluated_points'
             The type of points to be plotted. {evaluated_points, coefficients}
         opactity : float = 1.
@@ -1148,7 +1148,7 @@ class Function:
         Plots the function as a surface. NOTE: This should only be called if the function is a surface!
 
         Parameters
-        -----------
+        ----------
         points_type : str = 'evaluated_points'
             The type of points to be plotted. {evaluated_points, coefficients}
         plot_types : list = ['function']
@@ -1261,7 +1261,7 @@ class Function:
         Plots the function as a volume. NOTE: This should only be called if the function is a volume!
 
         Parameters
-        -----------
+        ----------
         points_type : str = 'evaluated_points'
             The type of points to be plotted. {evaluated_points, coefficients}
         plot_types : list = ['function']

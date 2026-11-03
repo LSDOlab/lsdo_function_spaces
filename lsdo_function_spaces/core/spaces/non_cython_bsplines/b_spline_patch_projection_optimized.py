@@ -3,17 +3,20 @@
 Optimized B-spline surface projection (point -> parametric coords).
 
 Key features:
+
 1. High-efficiency Gauss-Newton / Levenberg-Marquardt (LM) distance minimization.
 2. JAX implementation (jit + vmap friendly).
 3. NumPy vectorized implementation.
 
 Algorithm overview:
+
 - Avoids second derivatives (surface Hessians) entirely.
-- Minimizes squared distance: f(xi) = 1/2 * || S(xi) - p ||^2.
-- Gauss-Newton step: (J^T J) delta = - J^T r.
-- LM step: (J^T J + lambda I) delta = - J^T r.
+- Minimizes squared distance: ``f(xi) = 1/2 * || S(xi) - p ||^2``.
+- Gauss-Newton step: ``(J^T J) delta = - J^T r``.
+- LM step: ``(J^T J + lambda I) delta = - J^T r``.
 
 Both implementations implement:
+
 - Box constraints via clipping.
 - Active-set masking near bounds.
 - Early stopping using convergence masks.
@@ -365,9 +368,11 @@ def make_projector_lm_numpy(
     """
     Factory returning evaluators for S(u) and partials using your stencil-based NumPy evaluator.
 
-    Returns:
-      eval_S(us, coeffs)      -> (M, phys_dim)
-      eval_partials(us, coeffs) -> (M, phys_dim, n_param)
+    Returns
+    -------
+    tuple
+        eval_S(us, coeffs) -> (M, phys_dim)
+        eval_partials(us, coeffs) -> (M, phys_dim, n_param)
     """
     if make_bspline_evaluator_numpy is None:
         raise ImportError("make_bspline_evaluator_numpy not found; ensure compute_basis_matrix_numpy_factory.py is on path.")

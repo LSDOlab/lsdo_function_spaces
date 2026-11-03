@@ -14,7 +14,7 @@ from lsdo_function_spaces.core.interface import Interface, InterfaceCondition, C
 
 @dataclass
 class RankNullityReport:
-    """
+    r"""
     Diagnostic report of constraint matrix rank, redundancy, and nullity.
 
     Parameters
@@ -24,15 +24,15 @@ class RankNullityReport:
     num_constraints : int
         Total number of scalar constraint equations evaluated.
     rank : int
-        Numerical rank $r = \\mathrm{rank}(J_c)$ computed via singular value decomposition.
+        Numerical rank :math:`r = \mathrm{rank}(J_c)` computed via singular value decomposition.
     redundancy : int
-        Number of redundant constraint equations: $p - r$.
+        Number of redundant constraint equations: :math:`p - r`.
     nullity : int
-        Dimension of the constraint null space: $n - r$.
+        Dimension of the constraint null space: :math:`n - r`.
     gauge_modes : int
         Number of rigid-body or unconstrained gauge degrees of freedom accounted for.
     relative_freedom : int
-        Effective design degrees of freedom: $\\max(0, \\mathrm{nullity} - \\mathrm{gauge\\_modes})$.
+        Effective design degrees of freedom: :math:`\max(0, \mathrm{nullity} - \mathrm{gauge\_modes})`.
     rank_tolerance : float
         Singular value cutoff threshold used to determine rank.
     is_licq_satisfied : bool
@@ -54,7 +54,8 @@ class FunctionNetwork:
     Coupled network of functions, multi-patch function sets, interfaces, and conditions.
 
     A FunctionNetwork represents the overall topological and algebraic assembly:
-    - Nodes: Function or FunctionSet patches $(f_i, \\mathrm{patch\\_id})$.
+
+    - Nodes: Function or FunctionSet patches :math:`(f_i, \\mathrm{patch\\_id})`.
     - Hyperedges: Interface objects coupling markers across patches.
     - Mechanics: InterfaceCondition objects enforcing algebraic residuals.
 
@@ -269,15 +270,20 @@ class FunctionNetwork:
         return internal, between
 
     def compute_cycle_rank(self) -> Tuple[int, int]:
-        """
-        Computes the first Betti number $b_1$ on the patch-level incidence multigraph:
-            $b_{1,\\mathrm{multigraph}} = |E_{\\mathrm{inc}}| - (|V_{\\mathrm{patches}}| + |V_{\\mathrm{interfaces}}|) + C$
+        r"""
+        Computes the first Betti number :math:`b_1` on the patch-level incidence multigraph:
+
+        .. math::
+
+            b_{1,\mathrm{multigraph}} = |E_{\mathrm{inc}}| - (|V_{\mathrm{patches}}| + |V_{\mathrm{interfaces}}|) + C
+
         and the macroscopic loop count after collapsing parallel edges between identical patch sets.
 
         Returns
         -------
         Tuple[int, int]
             (b1_multigraph, b1_macroscopic)
+
             - b1_multigraph counts all independent topological cycles including multi-point parallel attachments.
             - b1_macroscopic counts global topological loops between components.
         """

@@ -23,8 +23,8 @@ def compute_projection_residual(
     """
     Compute the residual of the projection of a point in space onto a B-spline surface.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     point_in_space : jnp.ndarray, shape (d,)
         The point in space to project.
     para_coords : jnp.ndarray, shape (M, d)
@@ -36,8 +36,8 @@ def compute_projection_residual(
     knot_vectors : tuple of jnp.ndarray
         Knot vectors for each dimension.
 
-    Returns:
-    --------
+    Returns
+    -------
     residual : jnp.ndarray, shape (M,)
         The residuals of the projection.
     """
@@ -88,8 +88,8 @@ def compute_projection_jacobian(
     """
     Compute the Jacobian of the projection of a point in space onto a B-spline surface.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     point_in_space : jnp.ndarray, shape (d,)
         The point in space to project.
     para_coords : jnp.ndarray, shape (M, d)
@@ -105,8 +105,8 @@ def compute_projection_jacobian(
     surface_jacobian : list of jnp.ndarray, shape (M, num_phys_dims)
         Jacobian of the B-spline surface at the parameter coordinates.
 
-    Returns:
-    --------
+    Returns
+    -------
     jacobian : jnp.ndarray, shape (M, d)
         The Jacobian of the projection.
     """

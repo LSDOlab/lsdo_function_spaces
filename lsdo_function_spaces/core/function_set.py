@@ -407,6 +407,7 @@ class FunctionSet:
         ----------
         parametric_coordinates : Optional[Union[tuple[int, npt.NDArray[np.float64]], list[tuple[int, npt.NDArray[np.float64]]]]]
             Direct parametric coordinates on the function set, specified as:
+
             - A tuple: (function_index, uv_array) for a single point.
             - Or a list of tuples: [(function_index, uv_array), ...] for one or more points.
         name : Optional[str]

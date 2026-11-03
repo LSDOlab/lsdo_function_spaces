@@ -81,7 +81,7 @@ def show_plot(
     Shows the plot.
 
     Parameters
-    -----------
+    ----------
     plotting_elements : Optional[list]
         The list of PyVista plotting elements to plot. Default is None ([]).
     title : str
@@ -150,7 +150,7 @@ def plot_points(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray
     Plots a point cloud.
 
     Parameters
-    -----------
+    ----------
     points : np.ndarray
         The points to plot.
     opactity : float = 1.
@@ -201,7 +201,7 @@ def plot_curve(points:np.ndarray, opacity:float=1., color:Union[str, np.ndarray]
     Plots the B-spline Surface.
 
     Parameters
-    -----------
+    ----------
     points : np.ndarray -- shape=(num_points, num_physical_dimensions)
         The points of the curve to be plotted.
     opactity : float
@@ -253,7 +253,7 @@ def plot_surface(points:np.ndarray, plot_types:list=['function'], opacity:float=
     Plots the B-spline Surface.
 
     Parameters
-    -----------
+    ----------
     points : np.ndarray -- shape=(num_points_u, num_points_v, num_physical_dimensions)
         The type of points to be plotted. {evaluated_points, coefficients}
     plot_types : list

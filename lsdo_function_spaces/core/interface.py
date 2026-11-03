@@ -572,17 +572,18 @@ class InterfaceCondition:
 
 
 class CollocationCondition(InterfaceCondition):
-    """
+    r"""
     Collocation condition enforcing trace equality across markers, unary target planes, or prescribed offsets.
 
     Supports component selection per marker (e.g. constraining only x and z components)
-    and derivative matching for $C^1$ continuity.
+    and derivative matching for :math:`C^1` continuity.
 
     Formulation:
+
     - Multi-marker (star scheme against marker 0):
-      $r_k(\\gamma) = (f_k \\circ \\alpha_k)(\\gamma) - (f_0 \\circ \\alpha_0)(\\gamma) - \\mathrm{offset}$
+      :math:`r_k(\gamma) = (f_k \circ \alpha_k)(\gamma) - (f_0 \circ \alpha_0)(\gamma) - \mathrm{offset}`
     - Unary target:
-      $r_0(\\gamma) = (f_0 \\circ \\alpha_0)(\\gamma) - \\mathrm{target}$
+      :math:`r_0(\gamma) = (f_0 \circ \alpha_0)(\gamma) - \mathrm{target}`
 
     Parameters
     ----------
@@ -686,12 +687,13 @@ class CollocationCondition(InterfaceCondition):
 
 
 class TransversalDerivativeCondition(InterfaceCondition):
-    """
+    r"""
     Directional / transversal derivative matching condition across an Interface.
 
-    Enforces $C^1$ parametric derivative matching across patch boundaries:
+    Enforces :math:`C^1` parametric derivative matching across patch boundaries:
+
     - Multi-marker (star scheme against marker 0):
-      $r_k(\\gamma) = D_{d_k}(f_k \\circ \\alpha_k)(\\gamma) - \\mu_k D_{d_0}(f_0 \\circ \\alpha_0)(\\gamma)$
+      :math:`r_k(\gamma) = D_{d_k}(f_k \circ \alpha_k)(\gamma) - \mu_k D_{d_0}(f_0 \circ \alpha_0)(\gamma)`
 
     Parameters
     ----------
@@ -778,13 +780,15 @@ class TransversalDerivativeCondition(InterfaceCondition):
 
 
 class NormalAlignmentCondition(InterfaceCondition):
-    """
-    Surface normal alignment condition enforcing $G^1$ / tangent-plane continuity across an Interface.
+    r"""
+    Surface normal alignment condition enforcing :math:`G^1` / tangent-plane continuity across an Interface.
 
     Enforces that unit surface normal vectors align across patch boundaries:
+
     - Multi-marker (star scheme against marker 0):
-      $r_k(\\gamma) = n_k(\\gamma) - \\sigma n_0(\\gamma)$
-    where $\\sigma = \\pm 1$ represents relative surface orientation.
+      :math:`r_k(\gamma) = n_k(\gamma) - \sigma n_0(\gamma)`
+
+    where :math:`\sigma = \pm 1` represents relative surface orientation.
 
     Parameters
     ----------
@@ -865,10 +869,11 @@ class NormalAlignmentCondition(InterfaceCondition):
 
 
 class ClearanceCondition(InterfaceCondition):
-    """
+    r"""
     Clearance / non-penetration inequality condition across an Interface.
 
-    Enforces that the Euclidean distance between pairs of markers satisfies a minimum clearance:
+    Enforces that the Euclidean distance between pairs of markers satisfies a minimum clearance::
+
         ||f_k(gamma_k) - f_0(gamma_0)|| >= min_clearance
 
     Parameters
@@ -876,10 +881,13 @@ class ClearanceCondition(InterfaceCondition):
     interface : Interface
         The interface hyperedge containing the coupled markers (must have at least 2 markers).
     min_clearance : float
-        Minimum required physical clearance distance $d_{\\min} \\ge 0$. Default is 0.0.
+        Minimum required physical clearance distance :math:`d_{\min} \ge 0`. Default is 0.0.
     mode : Literal["violation", "margin"], optional
-        - "violation": evaluates $\\max(0, d_{\\min}^2 - \\|p_k - p_0\\|^2)$, which is zero when satisfied.
-        - "margin": evaluates $\\|p_k - p_0\\|^2 - d_{\\min}^2$, where $\\ge 0$ indicates satisfaction.
+        Evaluation mode:
+
+        - "violation": evaluates :math:`\max(0, d_{\min}^2 - \|p_k - p_0\|^2)`, which is zero when satisfied.
+        - "margin": evaluates :math:`\|p_k - p_0\|^2 - d_{\min}^2`, where :math:`\ge 0` indicates satisfaction.
+
         Default is "violation".
     discretization : Optional[Discretization], optional
         Discretization scheme for continuous interfaces. If None, uses interface.discretization.
