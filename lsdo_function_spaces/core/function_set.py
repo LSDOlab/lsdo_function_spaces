@@ -749,7 +749,7 @@ class FunctionSet:
         return new_function_set
 
     def project(self, points:npt.NDArray[np.float64], num_workers:int=None, direction:npt.NDArray[np.float64]=None,
-                use_line_search:bool=False, projection_tolerance:float=None,
+                use_line_search:bool=True, projection_tolerance:float=None,
                 grid_search_density_parameter:int=1, max_newton_iterations:int=100,
                 newton_tolerance:float=1e-6, plot:bool=False,
                 extrema=False, force_reprojection=False, priority_inds:Optional[list[int]]=None, priority_eps:float=1e-3,

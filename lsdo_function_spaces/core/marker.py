@@ -352,16 +352,19 @@ class Marker:
     def evaluate(
         self,
         entity: Optional[Union[Function, FunctionSet]] = None,
+        parametric_derivative_orders: Optional[Sequence[int]] = None,
         plot: bool = False,
         non_csdl: bool = False,
         sample_parameters: Optional[npt.NDArray[np.float64]] = None,
     ) -> Union[csdl.Variable, npt.NDArray[np.float64]]:
         """
-        Evaluates the function value at this marker's parametric coordinates.
+        Evaluates the function value or parametric derivative at this marker's parametric coordinates.
         Accepts both NumPy arrays and CSDL Variables without destroying CSDL graphs.
         """
         target = entity if entity is not None else self.entity
         from lsdo_function_spaces.core.function import Function
+
+        deriv_orders = parametric_derivative_orders
 
         # Continuous curve or surface marker (dimension m >= 1)
         if self.domain is not None and self.domain.dimension >= 1:
@@ -381,7 +384,7 @@ class Marker:
                 else:
                     uv = np.asarray(alpha_fn)
                 coords = [(patch_idx, uv[i, :]) for i in range(uv.shape[0])]
-                val = target.evaluate(coords, plot=plot, non_csdl=non_csdl)
+                val = target.evaluate(coords, parametric_derivative_orders=deriv_orders, plot=plot, non_csdl=non_csdl)
             else:
                 alpha_fn = self.parametric_coordinates
                 if isinstance(alpha_fn, Function):
@@ -390,7 +393,7 @@ class Marker:
                     uv = np.asarray([alpha_fn(s) for s in s_pts])
                 else:
                     uv = np.asarray(alpha_fn)
-                val = target.evaluate(uv, plot=plot, non_csdl=non_csdl)
+                val = target.evaluate(uv, parametric_derivative_orders=deriv_orders, plot=plot, non_csdl=non_csdl)
             return val
 
         # 0-D point marker(s)
@@ -399,9 +402,9 @@ class Marker:
             if isinstance(coords, np.ndarray):
                 if coords.ndim == 1:
                     coords = coords.reshape((1, -1))
-            val = target.evaluate(coords, plot=plot, non_csdl=non_csdl)
+            val = target.evaluate(coords, parametric_derivative_orders=deriv_orders, plot=plot, non_csdl=non_csdl)
         else:
-            val = target.evaluate(self.parametric_coordinates, plot=plot, non_csdl=non_csdl)
+            val = target.evaluate(self.parametric_coordinates, parametric_derivative_orders=deriv_orders, plot=plot, non_csdl=non_csdl)
 
         # Preserve single-point 1D squeeze for backward compatibility
         if hasattr(val, "shape") and len(val.shape) == 2 and val.shape[0] == 1:
@@ -418,46 +421,9 @@ class Marker:
         """
         Evaluates parametric derivatives at this marker's parametric coordinates.
         """
-        target = entity if entity is not None else self.entity
-        from lsdo_function_spaces.core.function import Function
-
-        # Continuous curve or surface marker (dimension m >= 1)
-        if self.domain is not None and self.domain.dimension >= 1:
-            if sample_parameters is not None:
-                s_pts = np.asarray(sample_parameters)
-                if s_pts.ndim == 1 and self.domain.dimension == 1:
-                    s_pts = s_pts.reshape(-1, 1)
-            else:
-                from lsdo_function_spaces.core.interface import Discretization
-                s_pts, _ = Discretization(num_points=10).generate_samples(self.domain)
-            if isinstance(self.parametric_coordinates, tuple):
-                patch_idx, alpha_fn = self.parametric_coordinates
-                if isinstance(alpha_fn, Function):
-                    uv = alpha_fn.evaluate(s_pts, non_csdl=non_csdl)
-                elif callable(alpha_fn):
-                    uv = np.asarray([alpha_fn(s) for s in s_pts])
-                else:
-                    uv = np.asarray(alpha_fn)
-                coords = [(patch_idx, uv[i, :]) for i in range(uv.shape[0])]
-                val = target.evaluate(coords, parametric_derivative_orders=derivative_orders, non_csdl=non_csdl)
-            else:
-                alpha_fn = self.parametric_coordinates
-                if isinstance(alpha_fn, Function):
-                    uv = alpha_fn.evaluate(s_pts, non_csdl=non_csdl)
-                elif callable(alpha_fn):
-                    uv = np.asarray([alpha_fn(s) for s in s_pts])
-                else:
-                    uv = np.asarray(alpha_fn)
-                val = target.evaluate(uv, parametric_derivative_orders=derivative_orders, non_csdl=non_csdl)
-            return val
-
-        if isinstance(target, Function):
-            coords = self.parametric_coordinates
-            if isinstance(coords, np.ndarray) and coords.ndim == 1:
-                coords = coords.reshape((1, -1))
-            val = target.evaluate(coords, parametric_derivative_orders=derivative_orders, non_csdl=non_csdl)
-        else:
-            val = target.evaluate(self.parametric_coordinates, parametric_derivative_orders=derivative_orders, non_csdl=non_csdl)
-        if hasattr(val, "shape") and len(val.shape) == 2 and val.shape[0] == 1:
-            val = val.reshape((val.shape[1],))
-        return val
+        return self.evaluate(
+            entity=entity,
+            parametric_derivative_orders=derivative_orders,
+            non_csdl=non_csdl,
+            sample_parameters=sample_parameters,
+        )

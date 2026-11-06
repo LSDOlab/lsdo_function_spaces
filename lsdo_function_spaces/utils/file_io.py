@@ -320,6 +320,14 @@ def _check_if_load_stored_import(
     if not path.is_file():
         return None
 
+    # Invalidate cache if the source file is newer than the cached import
+    if os.path.exists(file_name):
+        try:
+            if os.path.getmtime(file_name) > os.path.getmtime(file_path):
+                return None
+        except OSError:
+            pass
+
     _ensure_active_recorder()
 
     with open(file_path, 'rb') as handle:

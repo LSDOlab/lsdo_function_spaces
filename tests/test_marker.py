@@ -22,11 +22,16 @@ def test_marker_on_function():
     pos = m1.evaluate()
     assert np.allclose(pos.value, [0.5, 0.5, 0.0])
 
-    # Evaluate derivatives df/du and df/dv
+    # Evaluate derivatives df/du and df/dv via evaluate_derivatives and evaluate(parametric_derivative_orders=...)
     df_du = m1.evaluate_derivatives((1, 0))
     df_dv = m1.evaluate_derivatives((0, 1))
     assert np.allclose(df_du.value, [1.0, 0.0, 0.0])
     assert np.allclose(df_dv.value, [0.0, 1.0, 0.0])
+
+    df_du_eval = m1.evaluate(parametric_derivative_orders=(1, 0))
+    df_dv_eval = m1.evaluate(parametric_derivative_orders=(0, 1))
+    assert np.allclose(df_du_eval.value, [1.0, 0.0, 0.0])
+    assert np.allclose(df_dv_eval.value, [0.0, 1.0, 0.0])
 
     # Marker with optional name
     m2 = f.add_marker(np.array([0.25, 0.75]))
@@ -52,11 +57,16 @@ def test_marker_on_function_set():
     pos = m1.evaluate()
     assert np.allclose(pos.value, [0.5, 0.5, 0.0])
 
-    # Derivatives on function set
+    # Derivatives on function set via evaluate_derivatives and evaluate(parametric_derivative_orders=...)
     df_du = m1.evaluate_derivatives((1, 0))
     df_dv = m1.evaluate_derivatives((0, 1))
     assert np.allclose(df_du.value, [1.0, 0.0, 0.0])
     assert np.allclose(df_dv.value, [0.0, 1.0, 0.0])
+
+    df_du_eval = m1.evaluate(parametric_derivative_orders=(1, 0))
+    df_dv_eval = m1.evaluate(parametric_derivative_orders=(0, 1))
+    assert np.allclose(df_du_eval.value, [1.0, 0.0, 0.0])
+    assert np.allclose(df_dv_eval.value, [0.0, 1.0, 0.0])
 
     # Marker with list of tuples format and optional name
     m2 = fs.add_marker([(0, np.array([0.25, 0.75]))])
