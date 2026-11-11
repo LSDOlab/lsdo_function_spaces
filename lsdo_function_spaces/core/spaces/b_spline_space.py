@@ -159,15 +159,8 @@ class BSplineSpace(LinearFunctionSpace):
                 if values.shape[0] == 1:
                     values = values.flatten()
             else:
-                values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coefficients.shape[1])))
-                for i in csdl.frange(coefficients.shape[1]):
-                    coefficients_column = coefficients[:, i].reshape((coefficients.shape[0], 1))
-                    values = values.set(
-                        csdl.slice[:, i],
-                        csdl.sparse.matvec(basis_matrix, coefficients_column).reshape(
-                            (basis_matrix.shape[0],)
-                        ),
-                    )
+                c_flat = coefficients.reshape((basis_matrix.shape[1], coefficients.shape[-1]))
+                values = csdl.sparse.matmat(basis_matrix, c_flat)
                 values = values.reshape((parametric_coordinates.shape[0], coefficients.shape[-1]))
 
             return values

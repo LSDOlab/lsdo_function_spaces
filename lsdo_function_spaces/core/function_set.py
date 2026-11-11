@@ -650,10 +650,7 @@ class FunctionSet:
         if non_csdl:
             values = basis_matrix @ coeff_vector
         else:
-            values = csdl.Variable(value=np.zeros((basis_matrix.shape[0], coeff_vector.shape[1])))
-            for i in csdl.frange(coeff_vector.shape[1]):
-                coefficients_column = coeff_vector[:,i].reshape((coeff_vector.shape[0],1))
-                values = values.set(csdl.slice[:,i], csdl.sparse.matvec(basis_matrix, coefficients_column).reshape((basis_matrix.shape[0],)))
+            values = csdl.sparse.matmat(basis_matrix, coeff_vector)
 
         indices_reorder = np.argsort(reorder_indices).tolist()
         function_values = values[indices_reorder]
