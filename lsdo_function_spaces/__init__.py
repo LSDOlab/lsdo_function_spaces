@@ -38,6 +38,8 @@ from .core.interface import (
     TransversalDerivativeCondition,
     NormalAlignmentCondition,
     ClearanceCondition,
+    VariationalInequalityCondition,
+    generate_element_quadrature,
 )
 from .core.function_network import (
     FunctionNetwork,

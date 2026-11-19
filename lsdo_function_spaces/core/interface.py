@@ -143,6 +143,26 @@ class InterfaceDomain:
         return cls(bounds=concatenated, num_copies=1)
 
 
+def _gauss_lobatto_1d(N: int) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Computes 1D Gauss-Legendre-Lobatto (LGL) nodes and weights on [-1, 1].
+    Nodes include endpoints -1 and +1. Interior nodes are roots of P'_{N-1}(x).
+    """
+    if N < 2:
+        raise ValueError("Gauss-Lobatto quadrature requires at least 2 points.")
+    if N == 2:
+        return np.array([-1.0, 1.0]), np.array([1.0, 1.0])
+
+    leg_poly = np.polynomial.legendre.Legendre.basis(N - 1)
+    d_leg = leg_poly.deriv()
+    interior_nodes = np.sort(d_leg.roots())
+    nodes = np.concatenate([[-1.0], interior_nodes, [1.0]])
+
+    p_vals = leg_poly(nodes)
+    weights = 2.0 / (N * (N - 1) * (p_vals ** 2))
+    return nodes, weights
+
+
 @dataclass
 class Discretization:
     """
@@ -153,13 +173,14 @@ class Discretization:
     num_points : Union[int, Sequence[int]]
         Number of quadrature/collocation points per dimension. If a single int is given,
         it is applied to all m dimensions. Default is 10.
-    scheme : Literal["gauss_legendre", "chebyshev", "uniform"]
+    scheme : Literal["gauss_legendre", "gauss_lobatto", "chebyshev", "uniform"]
         Sampling scheme. "gauss_legendre" computes Legendre-Gauss quadrature nodes and weights,
+        "gauss_lobatto" computes Gauss-Legendre-Lobatto nodes (including endpoints -1 and 1),
         "chebyshev" computes Chebyshev-Gauss interpolation nodes, and "uniform" generates
         an evenly spaced grid. Default is "gauss_legendre".
     """
     num_points: Union[int, Sequence[int]] = 10
-    scheme: Literal["gauss_legendre", "chebyshev", "uniform"] = "gauss_legendre"
+    scheme: Literal["gauss_legendre", "gauss_lobatto", "chebyshev", "uniform"] = "gauss_legendre"
 
     def generate_samples(self, domain: InterfaceDomain) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
         """
@@ -200,6 +221,10 @@ class Discretization:
                 xi, w = np.polynomial.legendre.leggauss(N)
                 x = 0.5 * (a + b) + 0.5 * (b - a) * xi
                 w_scaled = 0.5 * (b - a) * w
+            elif self.scheme == "gauss_lobatto":
+                xi, w = _gauss_lobatto_1d(N)
+                x = 0.5 * (a + b) + 0.5 * (b - a) * xi
+                w_scaled = 0.5 * (b - a) * w
             elif self.scheme == "chebyshev":
                 if N == 1:
                     x = np.array([0.5 * (a + b)])
@@ -229,6 +254,91 @@ class Discretization:
         weights = np.prod(np.column_stack([wg.flatten() for wg in w_grids]), axis=1)
 
         return nodes, weights
+
+
+def generate_element_quadrature(
+    space: Any,
+    scheme: Literal["gauss_lobatto", "gauss_legendre"] = "gauss_lobatto",
+    degree_elevation: int = 1,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Generates composite element-wise quadrature nodes and weights over the
+    smooth polynomial subdomains (knot spans) of a function space.
+    Shared boundary nodes (e.g. for Gauss-Lobatto) are deduplicated with summed weights.
+
+    Parameters
+    ----------
+    space : Any
+        Function space (such as BSplineSpace or PolynomialSpace) with degree and optional knots.
+    scheme : Literal["gauss_lobatto", "gauss_legendre"], optional
+        Quadrature scheme per element. Default is "gauss_lobatto".
+    degree_elevation : int, optional
+        Extra quadrature points per element along each axis beyond p + 1. Default is 1.
+
+    Returns
+    -------
+    nodes : np.ndarray
+        Unique quadrature nodes of shape (Q, num_parametric_dimensions).
+    weights : np.ndarray
+        Integration weights of shape (Q,) summing to total parametric volume.
+    """
+    n_dim = getattr(space, "num_parametric_dimensions", 2)
+    degrees = getattr(space, "degree", (1,) * n_dim)
+    if isinstance(degrees, int):
+        degrees = (degrees,) * n_dim
+
+    # 1. Extract unique knot intervals per axis
+    dim_spans = []
+    if hasattr(space, "knots") and space.knots is not None:
+        for d in range(n_dim):
+            kd = space.knots[d] if isinstance(space.knots, (list, tuple)) else space.knots
+            u_knots = np.unique(kd)
+            spans = [(float(u_knots[i]), float(u_knots[i + 1])) for i in range(len(u_knots) - 1) if u_knots[i + 1] > u_knots[i] + 1e-12]
+            if len(spans) == 0:
+                spans = [(0.0, 1.0)]
+            dim_spans.append(spans)
+    else:
+        dim_spans = [[(0.0, 1.0)] for _ in range(n_dim)]
+
+    # 2. Quadrature points per element along each axis
+    n_pts_per_elem = [max(2, int(deg + 1 + degree_elevation)) for deg in degrees]
+
+    # 3. Generate 1D rules per axis and tensor-product over subdomains
+    import itertools
+    all_elem_nodes = []
+    all_elem_weights = []
+
+    for elem_boxes in itertools.product(*dim_spans):
+        nodes_1d = []
+        weights_1d = []
+        for d in range(n_dim):
+            a, b = elem_boxes[d]
+            N = n_pts_per_elem[d]
+            disc = Discretization(num_points=N, scheme=scheme)
+            dom_1d = InterfaceDomain.interval(a, b)
+            x_1d, w_1d = disc.generate_samples(dom_1d)
+            nodes_1d.append(x_1d.flatten())
+            weights_1d.append(w_1d)
+
+        grids = np.meshgrid(*nodes_1d, indexing="ij")
+        elem_nodes = np.column_stack([g.flatten() for g in grids])
+        w_grids = np.meshgrid(*weights_1d, indexing="ij")
+        elem_w = np.prod(np.column_stack([wg.flatten() for wg in w_grids]), axis=1)
+
+        all_elem_nodes.append(elem_nodes)
+        all_elem_weights.append(elem_w)
+
+    raw_nodes = np.vstack(all_elem_nodes)
+    raw_weights = np.concatenate(all_elem_weights)
+
+    # 4. Deduplicate coincident nodes at element boundaries
+    rounded = np.round(raw_nodes, decimals=10)
+    unique_nodes, inverse_indices = np.unique(rounded, axis=0, return_inverse=True)
+
+    unique_weights = np.zeros(len(unique_nodes), dtype=np.float64)
+    np.add.at(unique_weights, inverse_indices, raw_weights)
+
+    return unique_nodes, unique_weights
 
 
 @dataclass
@@ -534,12 +644,12 @@ class InterfaceCondition:
 
     Parameters
     ----------
-    interface : Interface
+    interface : Optional[Interface], optional
         The interface hyperedge on which this condition is defined.
     name : Optional[str], optional
         Optional descriptive name for the condition.
     """
-    def __init__(self, interface: Interface, name: Optional[str] = None):
+    def __init__(self, interface: Optional[Interface] = None, name: Optional[str] = None):
         self.interface = interface
         self.name = name
 
@@ -959,5 +1069,174 @@ class ClearanceCondition(InterfaceCondition):
             min_clearance=self.min_clearance,
             mode=self.mode,
             discretization=self.discretization,
+            name=self.name,
+        )
+
+
+class VariationalInequalityCondition(InterfaceCondition):
+    r"""
+    Enforces a continuous functional inequality :math:`c(x, \xi) \le 0` over a parametric domain
+    via Galerkin projection onto a non-negative function space basis.
+
+    Supports two selectable variational formulations:
+    - `"basis_weighted_ks"` (default): Basis-weighted Kreisselmeier-Steinhauser aggregation
+      with stabilized log-sum-exp shift. Preserves uniform violations :math:`c \equiv C \implies R \equiv C`
+      to machine precision.
+    - `"rectified_galerkin"`: Classical weak variational projection integrating the squared
+      rectified violation :math:`\max(0, c)^2` against the test basis functions.
+
+    Parameters
+    ----------
+    interface : Interface
+        The interface hyperedge on which the condition is defined.
+    space : Optional[Any], optional
+        The test function space (e.g. BSplineSpace) matching the boundary geometry.
+        If None, automatically inferred from the interface markers.
+    method : Literal["basis_weighted_ks", "rectified_galerkin"], optional
+        Variational aggregation formulation. Default is "basis_weighted_ks".
+    rho : float, optional
+        Sharpness factor for Kreisselmeier-Steinhauser aggregation. Default is 50.0.
+    tolerance : float, optional
+        Residual upper bound tolerance for rectified Galerkin. Default is 1e-4.
+    discretization_scheme : Literal["gauss_lobatto", "gauss_legendre"], optional
+        Quadrature rule for integration. Default is "gauss_lobatto".
+    degree_elevation : int, optional
+        Extra quadrature points per element along each axis beyond p + 1. Default is 1.
+    name : Optional[str], optional
+        Descriptive name for the condition.
+    """
+    def __init__(
+        self,
+        interface: Optional[Interface] = None,
+        space: Optional[Any] = None,
+        method: Literal["basis_weighted_ks", "rectified_galerkin"] = "basis_weighted_ks",
+        rho: float = 50.0,
+        tolerance: float = 1e-4,
+        discretization_scheme: Literal["gauss_lobatto", "gauss_legendre"] = "gauss_lobatto",
+        degree_elevation: int = 1,
+        name: Optional[str] = None,
+    ):
+        super().__init__(interface=interface, name=name)
+        self.method = method
+        self.rho = float(rho)
+        self.tolerance = float(tolerance)
+        self.discretization_scheme = discretization_scheme
+        self.degree_elevation = int(degree_elevation)
+
+        if space is None and interface is not None:
+            if len(interface.markers) > 0:
+                ent = interface.markers[0].entity
+                if hasattr(ent, "space") and ent.space is not None:
+                    space = ent.space
+                elif hasattr(ent, "functions") and len(ent.functions) > 0:
+                    first_fn = list(ent.functions.values())[0]
+                    space = getattr(first_fn, "space", None)
+
+        if space is None:
+            raise ValueError(
+                "Could not infer test function space. "
+                "Please pass `space` explicitly or provide an interface with bound markers."
+            )
+        self.space = space
+
+        # Precompute quadrature nodes and weights
+        self.nodes, self.weights = generate_element_quadrature(
+            space=self.space,
+            scheme=self.discretization_scheme,
+            degree_elevation=self.degree_elevation,
+        )
+
+        # Precompute basis matrix and weights outside optimization loop
+        B = self.space.compute_basis_matrix(self.nodes)
+        if not sps.issparse(B):
+            B = sps.csc_matrix(B)
+        else:
+            B = B.tocsc()
+
+        # Raw integration weights: W_qm = w_q * psi_m(xi_q)
+        W = sps.diags(self.weights) @ B
+
+        # Normalized integration weights: W_tilde_qm = W_qm / sum_{q'} W_{q'm}
+        col_sums = np.array(W.sum(axis=0)).flatten()
+        col_sums[col_sums < 1e-14] = 1.0
+        W_tilde = W @ sps.diags(1.0 / col_sums)
+
+        self.W_T = W.T.tocsr()
+        self.W_tilde_T = W_tilde.T.tocsr()
+        self.num_basis_functions = int(B.shape[1])
+        self.num_quad_points = int(self.nodes.shape[0])
+
+    @property
+    def is_linear(self) -> bool:
+        return False
+
+    def evaluate_projection(self, c_values: csdl.Variable) -> csdl.Variable:
+        """
+        Projects pointwise constraint values c_values of shape (Q,) or (Q, 1)
+        onto the test basis space, returning residual vector R of shape (N_psi,).
+        """
+        if hasattr(c_values, "shape") and len(c_values.shape) > 1 and c_values.shape[-1] == 1:
+            c_flat = csdl.reshape(c_values, (c_values.shape[0],))
+        else:
+            c_flat = c_values
+
+        if self.method == "basis_weighted_ks":
+            # Stabilized Log-Sum-Exp Trick:
+            # c_shift = max(c_flat)
+            c_shift = csdl.maximum(c_flat)
+            c_diff = c_flat - c_shift
+            exp_terms = csdl.exp(self.rho * c_diff)
+
+            # W_tilde_T @ exp_terms
+            weighted_sum = csdl.sparse.matvec(self.W_tilde_T, exp_terms)
+            R = (1.0 / self.rho) * csdl.log(weighted_sum) + c_shift
+            return R
+
+        elif self.method == "rectified_galerkin":
+            # phi(c) = max(0, c)^2
+            zeros = csdl.Variable(shape=c_flat.shape, value=0.0)
+            rectified = (csdl.maximum(c_flat, zeros)) ** 2
+            R = csdl.sparse.matvec(self.W_T, rectified)
+            return R
+        else:
+            raise ValueError(f"Unknown variational aggregation method '{self.method}'")
+
+    def evaluate_residual(self, field_values: Optional[csdl.Variable] = None) -> csdl.Variable:
+        """
+        Evaluates the variational inequality residual vector.
+        If field_values is provided, projects field_values directly onto the test space.
+        """
+        if field_values is not None:
+            return self.evaluate_projection(field_values)
+
+        if len(self.interface.markers) >= 2:
+            p0 = self.interface.markers[0].evaluate(sample_parameters=self.nodes)
+            p1 = self.interface.markers[1].evaluate(sample_parameters=self.nodes)
+            if hasattr(p0, "shape") and len(p0.shape) == 1:
+                p0 = p0.reshape((1, -1))
+            if hasattr(p1, "shape") and len(p1.shape) == 1:
+                p1 = p1.reshape((1, -1))
+
+            diff = p1 - p0
+            dist_sq = csdl.sum(diff**2, axes=(1,))
+            # Default non-penetration: c = -dist_sq <= 0
+            return self.evaluate_projection(-dist_sq)
+
+        raise ValueError("VariationalInequalityCondition requires field_values or at least 2 markers.")
+
+    def rebind(self, target_map: Dict[Any, Any]) -> VariationalInequalityCondition:
+        """
+        Rebinds the variational condition to target entities or cloned markers.
+        """
+        new_interface = self.interface.copy(target_map) if self.interface is not None else None
+        new_space = target_map.get(self.space, self.space)
+        return self.__class__(
+            interface=new_interface,
+            space=new_space,
+            method=self.method,
+            rho=self.rho,
+            tolerance=self.tolerance,
+            discretization_scheme=self.discretization_scheme,
+            degree_elevation=self.degree_elevation,
             name=self.name,
         )

@@ -113,6 +113,43 @@ class BSplineSpace(LinearFunctionSpace):
             bounds.append((u_min, u_max))
         return tuple(bounds)
 
+    def refine(
+        self,
+        coefficients_shape: Optional[Tuple[int, ...]] = None,
+        num_elements: Optional[Union[int, Tuple[int, ...]]] = None,
+    ) -> "BSplineSpace":
+        """
+        Creates an h-refined B-spline function space with more elements / basis functions.
+
+        Parameters
+        ----------
+        coefficients_shape : Optional[Tuple[int, ...]]
+            Desired number of basis functions in each parametric dimension.
+        num_elements : Optional[Union[int, Tuple[int, ...]]]
+            Number of knot span elements in each parametric dimension.
+
+        Returns
+        -------
+        BSplineSpace
+            Refined B-spline function space with the same degree and parametric bounds.
+        """
+        if coefficients_shape is None:
+            if num_elements is None:
+                raise ValueError("Either coefficients_shape or num_elements must be provided.")
+            if isinstance(num_elements, int):
+                num_elements = (num_elements,) * self.num_parametric_dimensions
+            coefficients_shape = tuple(
+                int(n_elem + d) for n_elem, d in zip(num_elements, self.degree)
+            )
+        else:
+            coefficients_shape = tuple(int(c) for c in coefficients_shape)
+
+        return BSplineSpace(
+            num_parametric_dimensions=self.num_parametric_dimensions,
+            degree=self.degree,
+            coefficients_shape=coefficients_shape,
+        )
+
     def _evaluate(
         self,
         coefficients: Union[np.ndarray, csdl.Variable],
