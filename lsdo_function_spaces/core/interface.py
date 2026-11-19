@@ -1079,10 +1079,11 @@ class VariationalInequalityCondition(InterfaceCondition):
     via Galerkin projection onto a non-negative function space basis.
 
     Supports two selectable variational formulations:
-    - `"basis_weighted_ks"` (default): Basis-weighted Kreisselmeier-Steinhauser aggregation
+
+    - ``"basis_weighted_ks"`` (default): Basis-weighted Kreisselmeier-Steinhauser aggregation
       with stabilized log-sum-exp shift. Preserves uniform violations :math:`c \equiv C \implies R \equiv C`
       to machine precision.
-    - `"rectified_galerkin"`: Classical weak variational projection integrating the squared
+    - ``"rectified_galerkin"``: Classical weak variational projection integrating the squared
       rectified violation :math:`\max(0, c)^2` against the test basis functions.
 
     Parameters
